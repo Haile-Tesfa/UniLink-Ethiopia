@@ -1,0 +1,25 @@
+
+
+name: unilink_ethiopia
+description: UniLink App
+publish_to: none
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/home/
+    - assets/images/profile/
+    - assets/images/marketplace/
+    - assets/images/auth/
+
+
