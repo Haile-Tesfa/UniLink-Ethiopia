@@ -12,7 +12,7 @@ class SignupScreen extends StatelessWidget {
         width: double.infinity,
         decoration: const BoxDecoration(
           image: DecorationImage(
-            image: AssetImage("assets/images/auth/signup_bg.jpg"),
+            image: AssetImage("assets/images/auth/wisdom.jpg"),
             fit: BoxFit.cover,
             opacity: 0.1, // Soft overlay for readability
           ),
@@ -31,13 +31,12 @@ class SignupScreen extends StatelessWidget {
               const Text(
                 "Join UniLink",
                 style: TextStyle(
-                  fontSize: 28, 
-                  fontWeight: FontWeight.bold, 
-                  color: AppColors.primary
-                ),
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary),
               ),
               const SizedBox(height: 30),
-              
+
               // Input Fields
               _buildTextField("Full Name", Icons.person_outline),
               const SizedBox(height: 15),
@@ -45,10 +44,11 @@ class SignupScreen extends StatelessWidget {
               const SizedBox(height: 15),
               _buildTextField("Password", Icons.lock_outline, isObscure: true),
               const SizedBox(height: 15),
-              _buildTextField("Confirm Password", Icons.lock_reset, isObscure: true),
-              
+              _buildTextField("Confirm Password", Icons.lock_reset,
+                  isObscure: true),
+
               const SizedBox(height: 30),
-              
+
               // Sign Up Button
               SizedBox(
                 width: double.infinity,
@@ -56,34 +56,41 @@ class SignupScreen extends StatelessWidget {
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: () => Navigator.pushReplacementNamed(context, '/home'),
-                  child: const Text("Sign Up", style: TextStyle(color: Colors.white, fontSize: 18)),
+                  onPressed: () =>
+                      Navigator.pushReplacementNamed(context, '/home'),
+                  child: const Text("Sign Up",
+                      style: TextStyle(color: Colors.white, fontSize: 18)),
                 ),
               ),
-              
+
               const SizedBox(height: 20),
-              const Text("— Or sign up with —", style: TextStyle(color: Colors.grey)),
+              const Text("— Or sign up with —",
+                  style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 20),
-              
+
               // Social Media Buttons
               Row(
                 children: [
                   Expanded(
-                    child: _socialButton("Google", "assets/images/auth/logo.jpg"), // Reusing logo for sample
+                    child: _socialButton("Google",
+                        "assets/images/auth/logo.jpg"), // Reusing logo for sample
                   ),
                   const SizedBox(width: 15),
                   Expanded(
-                    child: _socialButton("Facebook", "assets/images/auth/logo.jpg"),
+                    child: _socialButton(
+                        "Facebook", "assets/images/auth/logo.jpg"),
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 25),
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text("Already have an account? Login", style: TextStyle(color: AppColors.secondary)),
+                child: const Text("Already have an account? Login",
+                    style: TextStyle(color: AppColors.secondary)),
               ),
             ],
           ),
@@ -119,7 +126,8 @@ class SignupScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.account_circle, color: AppColors.secondary), // Placeholder for social icon
+          const Icon(Icons.account_circle,
+              color: AppColors.secondary), // Placeholder for social icon
           const SizedBox(width: 8),
           Text(label, style: const TextStyle(color: Colors.black87)),
         ],
