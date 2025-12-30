@@ -1,95 +1,257 @@
 import 'package:flutter/material.dart';
+import '../models/post_model.dart';
 import '../utils/colors.dart';
 
-class PostWidget extends StatefulWidget {
-  final String user, time, content, postImage, userImage;
-  
+class PostWidget extends StatelessWidget {
+  final Post post;
+  final VoidCallback onLike;
+  final VoidCallback onComment;
+  final VoidCallback onSave;
+  final VoidCallback onShare;
+
   const PostWidget({
-    super.key, 
-    required this.user, 
-    required this.time, 
-    required this.content, 
-    required this.postImage,
-    required this.userImage
+    super.key,
+    required this.post,
+    required this.onLike,
+    required this.onComment,
+    required this.onSave,
+    required this.onShare,
   });
-
-  @override
-  State<PostWidget> createState() => _PostWidgetState();
-}
-
-class _PostWidgetState extends State<PostWidget> {
-  bool isLiked = false;
-  bool isSaved = false;
-  int likeCount = 14; // Mock data
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      elevation: 2,
+      margin: const EdgeInsets.all(10),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: User Info
-          ListTile(
-            leading: CircleAvatar(backgroundImage: AssetImage(widget.userImage)),
-            title: Text(widget.user, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(widget.time, style: const TextStyle(fontSize: 12)),
-            trailing: IconButton(
-              icon: Icon(isSaved ? Icons.bookmark : Icons.bookmark_border, 
-                   color: isSaved ? AppColors.secondary : Colors.grey),
-              onPressed: () => setState(() => isSaved = !isSaved),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundImage: AssetImage(post.userAvatar),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        post.userName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            _formatTime(post.createdAt),
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.public, size: 12, color: Colors.grey),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  onPressed: () {
+                    _showPostOptions(context);
+                  },
+                ),
+              ],
             ),
           ),
-
-          // Content Text
+          
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(widget.content, style: const TextStyle(fontSize: 15, height: 1.4)),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              post.content,
+              style: const TextStyle(fontSize: 15, height: 1.4),
+            ),
           ),
-
-          // Post Image
-          ClipRRect(
-            child: Image.asset(widget.postImage, fit: BoxFit.cover, width: double.infinity, height: 220),
-          ),
-
-          // Interaction Bar: Like, Comment, Share
+          const SizedBox(height: 10),
+          
+          if (post.imageUrl != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  post.imageUrl!,
+                  height: 250,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          
           Padding(
-            padding: const EdgeInsets.all(12.0),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   children: [
-                    IconButton(
-                      icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, 
-                           color: isLiked ? Colors.red : Colors.grey),
-                      onPressed: () => setState(() {
-                        isLiked = !isLiked;
-                        isLiked ? likeCount++ : likeCount--;
-                      }),
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.favorite, size: 12, color: Colors.red),
                     ),
-                    Text("$likeCount likes"),
+                    const SizedBox(width: 4),
+                    Text('${post.likeCount}'),
                   ],
                 ),
-                _iconLabel(Icons.mode_comment_outlined, "Comment"),
-                _iconLabel(Icons.share_outlined, "Share"),
+                Text('${post.commentCount} comments'),
               ],
             ),
-          )
+          ),
+          
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _PostActionButton(
+                    icon: post.isLiked ? Icons.favorite : Icons.favorite_border,
+                    label: 'Like',
+                    isActive: post.isLiked,
+                    onTap: onLike,
+                  ),
+                ),
+                Expanded(
+                  child: _PostActionButton(
+                    icon: Icons.comment,
+                    label: 'Comment',
+                    onTap: onComment,
+                  ),
+                ),
+                Expanded(
+                  child: _PostActionButton(
+                    icon: Icons.share,
+                    label: 'Share',
+                    onTap: onShare,
+                  ),
+                ),
+                Expanded(
+                  child: _PostActionButton(
+                    icon: post.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                    label: 'Save',
+                    isActive: post.isSaved,
+                    onTap: onSave,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _iconLabel(IconData icon, String label) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: Colors.grey[700]),
-        const SizedBox(width: 5),
-        Text(label, style: TextStyle(color: Colors.grey[700])),
-      ],
+  String _formatTime(DateTime time) {
+    final now = DateTime.now();
+    final difference = now.difference(time);
+    
+    if (difference.inSeconds < 60) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${time.day}/${time.month}/${time.year}';
+    }
+  }
+
+  void _showPostOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.save_alt),
+                title: const Text('Save Post'),
+                onTap: () {
+                  Navigator.pop(context);
+                  onSave();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.content_copy),
+                title: const Text('Copy Link'),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.report),
+                title: const Text('Report Post'),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+              const Divider(),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PostActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool isActive;
+
+  const _PostActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.isActive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: isActive ? AppColors.primary : Colors.grey,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12),
+          ),
+        ],
+      ),
     );
   }
 }
