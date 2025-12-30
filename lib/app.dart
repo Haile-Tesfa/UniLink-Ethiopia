@@ -18,17 +18,20 @@ class UniLinkApp extends StatelessWidget {
       theme: ThemeData(
         primaryColor: AppColors.primary,
         scaffoldBackgroundColor: AppColors.background,
-        appBarTheme: const AppBarTheme(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+        ),
       ),
       initialRoute: '/login',
       routes: {
         '/login': (_) => const LoginScreen(),
         '/signup': (_) => const SignupScreen(),
-        '/home': (_) => const HomeFeed(),
         '/profile': (_) => const ProfileScreen(),
         '/chat': (_) => const ChatScreen(),
         '/marketplace': (_) => const MarketplaceHome(),
         '/events': (_) => const EventsList(),
+        
       },
     );
   }

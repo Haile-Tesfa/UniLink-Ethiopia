@@ -1,8 +1,8 @@
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import '../../utils/colors.dart';
+import '../home/home_feed.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,14 +21,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final text = value?.trim() ?? '';
     if (text.isEmpty) return 'Email or phone is required';
 
-    // Email: at least 1 char before @gmail.com
     final emailRegex = RegExp(r'^.{1,}@gmail\.com$');
-
-    // Phone: +2519xxxxxxxx OR +2517xxxxxxxx OR 09xxxxxxxx OR 07xxxxxxxx
     final phoneRegex = RegExp(r'^(\+251[79]\d{8}|[07]\d{9})$');
 
     if (emailRegex.hasMatch(text) || phoneRegex.hasMatch(text)) {
-      return null; // valid
+      return null;
     }
     return 'Use Gmail (user@gmail.com) or ET phone (+2519/7 or 09/07)';
   }
@@ -38,7 +35,6 @@ class _LoginScreenState extends State<LoginScreen> {
     if (text.isEmpty) return 'Password is required';
     if (text.length < 8) return 'Minimum 8 characters';
 
-    // At least 1 letter, 1 digit, 1 special char
     final strongPass =
         RegExp(r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$');
 
@@ -51,12 +47,11 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _onLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final identifier = _emailOrPhoneController.text.trim(); // email or phone
+    final identifier = _emailOrPhoneController.text.trim();
     final password = _passwordController.text;
 
     try {
       final response = await http.post(
-        // Windows / Chrome → localhost; Android emulator → change to 10.0.2.2
         Uri.parse('http://localhost:3000/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -65,14 +60,42 @@ class _LoginScreenState extends State<LoginScreen> {
         }),
       );
 
-      final data = jsonDecode(response.body);
+      print('LOGIN STATUS: ${response.statusCode}');
+      print('LOGIN BODY: "${response.body}"');
+      print('LOGIN HEADERS: ${response.headers}');
 
-      if (response.statusCode == 200) {
-        // Login success: user exists in SQL with same email/phone + password
-        Navigator.pushReplacementNamed(context, '/home');
+      dynamic data;
+      if (response.body.isNotEmpty) {
+        try {
+          data = jsonDecode(response.body);
+        } catch (e) {
+          print('JSON decode error: $e');
+          data = null;
+        }
+      }
+
+      if (response.statusCode == 200 && data != null && data['user'] != null) {
+        final user = data['user'];
+        final int userId = user['userId'];
+        final String fullName = user['fullName'];
+        final String email = user['email'];
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomeFeed(
+              userId: userId,
+              fullName: fullName,
+              email: email,
+            ),
+          ),
+        );
       } else {
+        final errorMessage = (data != null && data['error'] is String)
+            ? data['error']
+            : 'Login failed (status ${response.statusCode})';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['error'] ?? 'Login failed')),
+          SnackBar(content: Text(errorMessage)),
         );
       }
     } catch (e) {
@@ -80,6 +103,13 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(content: Text('Network error: $e')),
       );
     }
+  }
+
+  @override
+  void dispose() {
+    _emailOrPhoneController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -102,7 +132,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   Image.asset('assets/images/auth/logo.jpg', height: 80),
                   const SizedBox(height: 40),
-
                   // Email or Phone
                   Container(
                     width: 300,
@@ -121,7 +150,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-
                   // Password
                   Container(
                     width: 300,
@@ -141,7 +169,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 30),
-
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
@@ -153,7 +180,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
-
                   TextButton(
                     onPressed: () =>
                         Navigator.pushNamed(context, '/signup'),

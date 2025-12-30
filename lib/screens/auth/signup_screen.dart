@@ -21,8 +21,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
   bool _isLoading = false;
 
-  // ---------- VALIDATORS ----------
-
   String? _validateFullName(String? value) {
     final text = value?.trim() ?? '';
     if (text.isEmpty) return 'Full name required';
@@ -30,7 +28,6 @@ class _SignupScreenState extends State<SignupScreen> {
     return null;
   }
 
-  // Gmail only, like in login
   String? _validateEmail(String? value) {
     final text = value?.trim() ?? '';
     if (text.isEmpty) return 'Email required';
@@ -42,7 +39,6 @@ class _SignupScreenState extends State<SignupScreen> {
     return null;
   }
 
-  // ET phone: +2519/7xxxxxxxx OR 09/07xxxxxxxx (same logic as login)
   String? _validatePhone(String? value) {
     final text = value?.trim() ?? '';
     if (text.isEmpty) return 'Phone required';
@@ -76,8 +72,6 @@ class _SignupScreenState extends State<SignupScreen> {
     }
     return null;
   }
-
-  // ---------- SIGNUP REQUEST ----------
 
   Future<void> _onSignup() async {
     if (!_formKey.currentState!.validate()) return;
@@ -151,8 +145,6 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  // ---------- UI ----------
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -187,8 +179,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   ),
                 ),
                 const SizedBox(height: 30),
-
-                // Full Name
                 _buildTextField(
                   controller: _fullNameController,
                   hint: "Full Name",
@@ -196,8 +186,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   validator: _validateFullName,
                 ),
                 const SizedBox(height: 15),
-
-                // University Email
                 _buildTextField(
                   controller: _emailController,
                   hint: "University Email",
@@ -205,8 +193,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   validator: _validateEmail,
                 ),
                 const SizedBox(height: 15),
-
-                // Phone
                 _buildTextField(
                   controller: _phoneController,
                   hint: "Phone",
@@ -214,8 +200,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   validator: _validatePhone,
                 ),
                 const SizedBox(height: 15),
-
-                // Password
                 _buildTextField(
                   controller: _passwordController,
                   hint: "Password",
@@ -224,8 +208,6 @@ class _SignupScreenState extends State<SignupScreen> {
                   validator: _validatePassword,
                 ),
                 const SizedBox(height: 15),
-
-                // Confirm Password
                 _buildTextField(
                   controller: _confirmPasswordController,
                   hint: "Confirm Password",
@@ -233,10 +215,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   isObscure: true,
                   validator: _validateConfirmPassword,
                 ),
-
                 const SizedBox(height: 30),
-
-                // Sign Up Button
                 SizedBox(
                   width: double.infinity,
                   height: 55,
@@ -256,26 +235,6 @@ class _SignupScreenState extends State<SignupScreen> {
                           ),
                   ),
                 ),
-
-                const SizedBox(height: 20),
-                const Text(
-                  "— Or sign up with —",
-                  style: TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 20),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: _socialButton("Google", "assets/images/auth/logo.jpg"),
-                    ),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      child: _socialButton("Facebook", "assets/images/auth/logo.jpg"),
-                    ),
-                  ],
-                ),
-
                 const SizedBox(height: 25),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
@@ -312,25 +271,6 @@ class _SignupScreenState extends State<SignupScreen> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
-      ),
-    );
-  }
-
-  Widget _socialButton(String label, String iconPath) {
-    return OutlinedButton(
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        side: const BorderSide(color: Colors.grey),
-      ),
-      onPressed: () {},
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.account_circle, color: AppColors.secondary),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(color: Colors.black87)),
-        ],
       ),
     );
   }

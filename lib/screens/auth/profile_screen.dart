@@ -12,19 +12,18 @@ class ProfileScreen extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 30),
-            // Profile Image & Name
             const Center(
               child: CircleAvatar(
                 radius: 60,
-                backgroundImage: AssetImage('assets/images/profile/prof_1.jpg'),
+                backgroundImage: AssetImage('assets/images/profile/save1.jpg'),
               ),
             ),
             const SizedBox(height: 15),
             const Text(
-              "Meklit Desalegn",
+              "Group four",
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primary),
             ),
-            const Text("Architecture Student | Year 3", style: TextStyle(color: Colors.grey)),
+            const Text("SoftwareEngineering Student | Year 4", style: TextStyle(color: Colors.grey)),
             
             const SizedBox(height: 30),
             

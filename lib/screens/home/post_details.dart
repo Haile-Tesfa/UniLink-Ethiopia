@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../utils/colors.dart';
 
 class PostDetails extends StatelessWidget {
   final String imagePath;
-  const PostDetails({super.key, required this.imagePath});
+  final String title;
+  final String description;
+
+  const PostDetails({
+    super.key,
+    required this.imagePath,
+    required this.title,
+    required this.description,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final postText = "$title: $description";
+
     return Scaffold(
       appBar: AppBar(title: const Text("Post Details")),
       body: SingleChildScrollView(
@@ -14,26 +25,37 @@ class PostDetails extends StatelessWidget {
           children: [
             Hero(
               tag: imagePath,
-              child: Image.asset(imagePath, width: double.infinity, fit: BoxFit.contain),
+              child: Image.asset(
+                imagePath,
+                width: double.infinity,
+                fit: BoxFit.contain,
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(20.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "Architecture Dept. Update",
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primary),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   const Text(
-                    "Posted by Meklit Desalegn",
-                    style: TextStyle(color: AppColors.secondary, fontWeight: FontWeight.w600),
+                    "Posted by Group four",
+                    style: TextStyle(
+                      color: AppColors.secondary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const Divider(height: 30),
-                  const Text(
-                    "This is a detailed view of the post. In your app, this is where students can read the full description of campus events, announcements, or networking opportunities.",
-                    style: TextStyle(fontSize: 16, height: 1.5),
+                  Text(
+                    description,
+                    style: const TextStyle(fontSize: 16, height: 1.5),
                   ),
                   const SizedBox(height: 30),
                   ElevatedButton.icon(
@@ -41,10 +63,15 @@ class PostDetails extends StatelessWidget {
                       backgroundColor: AppColors.primary,
                       minimumSize: const Size(double.infinity, 50),
                     ),
-                    onPressed: () {},
+                    onPressed: () {
+                      Share.share(postText);
+                    },
                     icon: const Icon(Icons.share, color: Colors.white),
-                    label: const Text("Share Update", style: TextStyle(color: Colors.white)),
-                  )
+                    label: const Text(
+                      "Share Update",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
                 ],
               ),
             ),
