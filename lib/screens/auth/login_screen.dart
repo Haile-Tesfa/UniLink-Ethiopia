@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/app_logo.dart';
 import '../../utils/colors.dart';
+import '../auth/forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,7 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _emailController.text = 'student@university.edu.et';
+    _emailController.text = '';
   }
 
   @override
@@ -39,19 +42,112 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final uri = Uri.parse('http://localhost:5000/api/auth/login');
 
-    setState(() {
-      _isLoading = false;
-    });
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': _emailController.text.trim(),
+          'password': _passwordController.text,
+        }),
+      );
 
-    Navigator.pushReplacementNamed(context, '/home');
+      if (response.statusCode == 200) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        String msg = 'Login failed';
+        try {
+          final body = jsonDecode(response.body);
+          msg = body['message'] ?? msg;
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot connect to server')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _togglePasswordVisibility() {
     setState(() {
       _obscurePassword = !_obscurePassword;
     });
+  }
+
+  void _onForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+    );
+  }
+
+  Future<void> _onGoogleLogin() async {
+    try {
+      const fakeIdToken = 'FAKE_GOOGLE_ID_TOKEN';
+      final uri = Uri.parse('http://localhost:5000/api/auth/google');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'idToken': fakeIdToken}),
+      );
+
+      if (response.statusCode == 200) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        String msg = 'Google login failed';
+        try {
+          final body = jsonDecode(response.body);
+          msg = body['message'] ?? msg;
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot connect to server')),
+      );
+    }
+  }
+
+  Future<void> _onFacebookLogin() async {
+    try {
+      const fakeAccessToken = 'FAKE_FACEBOOK_ACCESS_TOKEN';
+      final uri = Uri.parse('http://localhost:5000/api/auth/facebook');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'accessToken': fakeAccessToken}),
+      );
+
+      if (response.statusCode == 200) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        String msg = 'Facebook login failed';
+        try {
+          final body = jsonDecode(response.body);
+          msg = body['message'] ?? msg;
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot connect to server')),
+      );
+    }
   }
 
   @override
@@ -68,7 +164,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-          
           SafeArea(
             child: SingleChildScrollView(
               child: Padding(
@@ -79,11 +174,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const SizedBox(height: 40),
-                      
                       const AppLogo(size: 120),
-                      
                       const SizedBox(height: 10),
-                      
                       const Text(
                         'Welcome Back',
                         style: TextStyle(
@@ -92,18 +184,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           color: AppColors.primary,
                         ),
                       ),
-                      
                       const SizedBox(height: 5),
-                      
                       const Text(
                         'Sign in to continue to UniLink',
                         style: TextStyle(
                           color: AppColors.textSecondary,
                         ),
                       ),
-                      
                       const SizedBox(height: 40),
-                      
                       CustomTextField(
                         controller: _emailController,
                         label: 'University Email',
@@ -119,9 +207,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 15),
-                      
                       CustomTextField(
                         controller: _passwordController,
                         label: 'Password',
@@ -145,9 +231,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 10),
-                      
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -169,9 +253,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                           ),
                           TextButton(
-                            onPressed: () {
-                              // Forgot password
-                            },
+                            onPressed: _onForgotPassword,
                             child: const Text(
                               'Forgot Password?',
                               style: TextStyle(
@@ -182,17 +264,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
-                      
                       const SizedBox(height: 20),
-                      
                       CustomButton(
                         text: 'Login',
                         onPressed: _login,
                         isLoading: _isLoading,
                       ),
-                      
                       const SizedBox(height: 25),
-                      
                       Row(
                         children: [
                           Expanded(
@@ -201,7 +279,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 15),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 15),
                             child: Text(
                               'or continue with',
                               style: TextStyle(
@@ -217,32 +296,30 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
-                      
                       const SizedBox(height: 25),
-                      
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           _SocialButton(
                             icon: Icons.g_mobiledata,
-                            onPressed: () {},
+                            onPressed: _onGoogleLogin,
                           ),
                           const SizedBox(width: 20),
                           _SocialButton(
                             icon: Icons.facebook,
-                            onPressed: () {},
+                            onPressed: _onFacebookLogin,
                           ),
                         ],
                       ),
-                      
                       const SizedBox(height: 30),
-                      
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Text(
                             "Don't have an account? ",
-                            style: TextStyle(color: AppColors.textSecondary),
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                            ),
                           ),
                           TextButton(
                             onPressed: () {

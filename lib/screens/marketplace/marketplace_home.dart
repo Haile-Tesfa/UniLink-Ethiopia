@@ -1,37 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import '../../widgets/enhanced_bottom_navbar.dart';
 import '../../widgets/marketplace_item_card.dart';
-import '../../models/marketplace_model.dart'; // Add this import
+import '../../models/marketplace_model.dart';
 import '../../utils/colors.dart';
-
-// REMOVE this entire class definition:
-// class MarketplaceItem {
-//   final String id;
-//   final String title;
-//   final String description;
-//   final double price;
-//   final String imageUrl;
-//   final String sellerName;
-//   final String category;
-//   final String condition;
-//   final DateTime postedDate;
-//   final bool isNegotiable;
-//   final bool isFavorite;
-
-//   const MarketplaceItem({
-//     required this.id,
-//     required this.title,
-//     required this.description,
-//     required this.price,
-//     required this.imageUrl,
-//     required this.sellerName,
-//     required this.category,
-//     this.condition = 'Good',
-//     required this.postedDate,
-//     this.isNegotiable = true,
-//     this.isFavorite = false,
-//   });
-// }
 
 class MarketplaceHome extends StatefulWidget {
   const MarketplaceHome({super.key});
@@ -43,10 +18,20 @@ class MarketplaceHome extends StatefulWidget {
 class _MarketplaceHomeState extends State<MarketplaceHome> {
   int _currentIndex = 1;
   String _selectedCategory = 'All';
-  final List<String> _categories = ['All', 'Books', 'Electronics', 'Furniture', 'Clothing', 'Services'];
-  
-  List<MarketplaceItem> _items = []; // Now uses the shared model
+  final List<String> _categories = [
+    'All',
+    'Books',
+    'Electronics',
+    'Furniture',
+    'Clothing',
+    'Services',
+  ];
+
+  List<MarketplaceItem> _items = [];
   bool _isLoading = false;
+
+  // NEW: state for price range filter
+  RangeValues _priceRange = const RangeValues(0, 5000);
 
   @override
   void initState() {
@@ -59,75 +44,54 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
       _isLoading = true;
     });
 
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      // For Chrome / Windows: use localhost instead of 10.0.2.2
+      final uri = Uri.parse('http://localhost:5000/api/marketplace/items');
+      final response = await http.get(uri);
 
-    setState(() {
-      _items = [
-        MarketplaceItem(
-          id: '1',
-          title: 'Scientific Calculator',
-          description: 'Texas Instruments scientific calculator, barely used',
-          price: 1500.0,
-          imageUrl: 'assets/images/marketplace/item_0.jpg',
-          sellerName: 'Meklit Desalegn',
-          category: 'Electronics',
-          condition: 'Like New',
-          postedDate: DateTime.now().subtract(const Duration(days: 2)),
-          isFavorite: false,
-        ),
-        MarketplaceItem(
-          id: '2',
-          title: 'Textbooks Bundle',
-          description: 'Engineering textbooks bundle for 2nd year',
-          price: 2500.0,
-          imageUrl: 'assets/images/marketplace/item_1.jpg',
-          sellerName: 'Abebe Kebede',
-          category: 'Books',
-          condition: 'Good',
-          postedDate: DateTime.now().subtract(const Duration(days: 5)),
-          isFavorite: true,
-        ),
-        MarketplaceItem(
-          id: '3',
-          title: 'Desk Lamp',
-          description: 'LED desk lamp with adjustable brightness',
-          price: 350.0,
-          imageUrl: 'assets/images/marketplace/item_2.jpg',
-          sellerName: 'Sara Tesfaye',
-          category: 'Electronics',
-          condition: 'Excellent',
-          postedDate: DateTime.now().subtract(const Duration(days: 1)),
-          isFavorite: false,
-        ),
-        MarketplaceItem(
-          id: '4',
-          title: 'Study Table',
-          description: 'Wooden study table with drawer',
-          price: 1200.0,
-          imageUrl: 'assets/images/marketplace/item_3.jpg',
-          sellerName: 'John Doe',
-          category: 'Furniture',
-          condition: 'Good',
-          postedDate: DateTime.now().subtract(const Duration(days: 3)),
-          isFavorite: true,
-        ),
-      ];
-      _isLoading = false;
-    });
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final List<dynamic> itemsJson = data['items'] as List<dynamic>;
+
+        setState(() {
+          _items = itemsJson
+              .map(
+                (json) =>
+                    MarketplaceItem.fromJson(json as Map<String, dynamic>),
+              )
+              .toList();
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+        // optional: show error SnackBar
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      // optional: show error SnackBar
+    }
   }
 
   List<MarketplaceItem> get _filteredItems {
+    // Currently only filters by category; later you can also use _priceRange
     if (_selectedCategory == 'All') return _items;
-    return _items.where((item) => item.category == _selectedCategory).toList();
+    return _items
+        .where((item) => item.category == _selectedCategory)
+        .toList();
   }
 
-  void _toggleFavorite(String itemId) {
+  void _toggleFavorite(int itemId) {
     setState(() {
       final index = _items.indexWhere((item) => item.id == itemId);
       if (index != -1) {
         final item = _items[index];
         _items[index] = MarketplaceItem(
           id: item.id,
+          sellerId: item.sellerId,
           title: item.title,
           description: item.description,
           price: item.price,
@@ -177,7 +141,9 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
                     selected: _selectedCategory == category,
                     selectedColor: AppColors.primary,
                     labelStyle: TextStyle(
-                      color: _selectedCategory == category ? Colors.white : AppColors.textPrimary,
+                      color: _selectedCategory == category
+                          ? Colors.white
+                          : AppColors.textPrimary,
                     ),
                     onSelected: (selected) {
                       setState(() {
@@ -196,7 +162,8 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
                     ? const Center(child: Text('No items found'))
                     : GridView.builder(
                         padding: const EdgeInsets.all(10),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           crossAxisSpacing: 10,
                           mainAxisSpacing: 10,
@@ -245,23 +212,33 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text('Price Range'),
+                // FIXED: non-const RangeSlider using state
                 RangeSlider(
-                  values: const RangeValues(0, 5000),
+                  values: _priceRange,
                   min: 0,
                   max: 10000,
                   divisions: 10,
-                  labels: const RangeLabels('0 ETB', '5000 ETB'),
-                  onChanged: (RangeValues values) {},
+                  labels: RangeLabels(
+                    '${_priceRange.start.toInt()} ETB',
+                    '${_priceRange.end.toInt()} ETB',
+                  ),
+                  onChanged: (RangeValues values) {
+                    setState(() {
+                      _priceRange = values;
+                    });
+                  },
                 ),
                 const SizedBox(height: 20),
                 const Text('Condition'),
                 Wrap(
                   spacing: 10,
-                  children: ['New', 'Like New', 'Good', 'Fair'].map((condition) {
+                  children: ['New', 'Like New', 'Good', 'Fair'].map((cond) {
                     return FilterChip(
-                      label: Text(condition),
+                      label: Text(cond),
                       selected: false,
-                      onSelected: (selected) {},
+                      onSelected: (selected) {
+                        // later you can add condition filter state here
+                      },
                     );
                   }).toList(),
                 ),
@@ -275,6 +252,7 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
             ),
             TextButton(
               onPressed: () {
+                // later you can apply price/condition filters here
                 Navigator.pop(context);
               },
               child: const Text('Apply'),

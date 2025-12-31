@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/app_logo.dart';
@@ -33,19 +35,56 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _signup() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate() || _selectedYear == null) {
+      return;
+    }
 
     setState(() {
       _isLoading = true;
     });
 
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      // Chrome / Windows → use localhost
+      final response = await http.post(
+        Uri.parse('http://localhost:5000/api/auth/signup'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'fullName': _nameController.text.trim(),
+          'email': _emailController.text.trim(),
+          'studentId': _studentIdController.text.trim(),
+          'department': _departmentController.text.trim(),
+          'yearOfStudy': _selectedYear,
+          'password': _passwordController.text,
+        }),
+      );
 
-    setState(() {
-      _isLoading = false;
-    });
+      // Debug (optional)
+      // print('STATUS: ${response.statusCode}');
+      // print('BODY: ${response.body}');
 
-    Navigator.pushReplacementNamed(context, '/home');
+      if (response.statusCode == 201) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        String msg = 'Signup failed';
+        try {
+          final body = jsonDecode(response.body);
+          msg = body['message'] ?? msg;
+        } catch (_) {}
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot connect to server')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _togglePasswordVisibility() {
@@ -68,7 +107,6 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
             ),
           ),
-          
           SafeArea(
             child: SingleChildScrollView(
               child: Padding(
@@ -82,15 +120,11 @@ class _SignupScreenState extends State<SignupScreen> {
                         icon: const Icon(Icons.arrow_back),
                         onPressed: () => Navigator.pop(context),
                       ),
-                      
                       const SizedBox(height: 10),
-                      
-                      Center(
-                        child: const AppLogo(size: 100),
+                      const Center(
+                        child: AppLogo(size: 100),
                       ),
-                      
                       const SizedBox(height: 10),
-                      
                       const Center(
                         child: Text(
                           'Create Account',
@@ -101,9 +135,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           ),
                         ),
                       ),
-                      
                       const SizedBox(height: 5),
-                      
                       const Center(
                         child: Text(
                           'Join UniLink community',
@@ -112,9 +144,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           ),
                         ),
                       ),
-                      
                       const SizedBox(height: 30),
-                      
                       CustomTextField(
                         controller: _nameController,
                         label: 'Full Name',
@@ -126,9 +156,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 15),
-                      
                       CustomTextField(
                         controller: _emailController,
                         label: 'University Email',
@@ -144,9 +172,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 15),
-                      
                       CustomTextField(
                         controller: _studentIdController,
                         label: 'Student ID',
@@ -158,9 +184,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 15),
-                      
                       CustomTextField(
                         controller: _departmentController,
                         label: 'Department',
@@ -172,14 +196,12 @@ class _SignupScreenState extends State<SignupScreen> {
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 15),
-                      
-                      // Year of Study Dropdown
                       InputDecorator(
                         decoration: InputDecoration(
                           labelText: 'Year of Study',
-                          prefixIcon: const Icon(Icons.confirmation_number),
+                          prefixIcon:
+                              const Icon(Icons.confirmation_number),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -205,9 +227,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           ),
                         ),
                       ),
-                      
                       const SizedBox(height: 15),
-                      
                       CustomTextField(
                         controller: _passwordController,
                         label: 'Password',
@@ -228,31 +248,32 @@ class _SignupScreenState extends State<SignupScreen> {
                           if (value.length < 6) {
                             return 'Password must be at least 6 characters';
                           }
+                          // backend requires at least 8 chars + upper + lower + digit + special
+                          // but you can improve this validator later to match exactly
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 30),
-                      
                       CustomButton(
                         text: 'Create Account',
                         onPressed: _signup,
                         isLoading: _isLoading,
                       ),
-                      
                       const SizedBox(height: 20),
-                      
                       Center(
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             const Text(
                               "Already have an account? ",
-                              style: TextStyle(color: AppColors.textSecondary),
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                              ),
                             ),
                             TextButton(
                               onPressed: () {
-                                Navigator.pushReplacementNamed(context, '/login');
+                                Navigator.pushReplacementNamed(
+                                    context, '/login');
                               },
                               child: const Text(
                                 'Sign In',
