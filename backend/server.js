@@ -1,18 +1,21 @@
+require('dotenv').config();
 const express = require('express');
 const sql = require('mssql');
 const cors = require('cors');
+const multer = require('multer');
+const path = require('path');
 
 const app = express();
 const port = 5000;
 
 const dbConfig = {
-    user: 'sa',
-    password: '123321',
-    server: 'localhost',
-    database: 'unilink',
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    server: process.env.DB_SERVER,
+    database: process.env.DB_NAME,
     options: {
-        encrypt: false,
-        trustServerCertificate: true,
+        encrypt: process.env.DB_ENCRYPT === 'true',
+        trustServerCertificate: process.env.DB_TRUST_CERT === 'true',
     },
 };
 
@@ -28,6 +31,7 @@ sql
     .catch((err) => {
         console.error('SQL connection error:', err);
     });
+
 
 // AUTH: SIGNUP
 app.post('/api/auth/signup', async (req, res) => {
@@ -362,6 +366,41 @@ app.post('/api/marketplace/items', async (req, res) => {
         return res.status(500).json({ message: 'Server error' });
     }
 });
+
+
+
+
+// POSTS: CREATE
+app.post('/api/posts', async (req, res) => {
+    const { userId, content, mediaUrl, mediaType, privacy } = req.body;
+
+    if (!userId || !content || !privacy) {
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+        const pool = req.app.locals.db;
+        await pool
+            .request()
+            .input('UserId', sql.Int, userId)
+            .input('Content', sql.NVarChar(2000), content)
+            .input('MediaUrl', sql.NVarChar(300), mediaUrl || null)
+            .input('MediaType', sql.NVarChar(20), mediaType || null)
+            .input('Privacy', sql.NVarChar(20), privacy)
+            .query(`
+                INSERT INTO Posts (UserId, Content, MediaUrl, MediaType, Privacy)
+                VALUES (@UserId, @Content, @MediaUrl, @MediaType, @Privacy);
+            `);
+
+        return res.status(201).json({ message: 'Post created successfully' });
+    } catch (err) {
+        console.error('Create post error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+
+
 
 // NOTIFICATIONS: GET
 app.get('/api/notifications/:userId', async (req, res) => {

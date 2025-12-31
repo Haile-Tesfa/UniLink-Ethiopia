@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import '../../utils/colors.dart';
 
 class CreatePostScreen extends StatefulWidget {
@@ -14,10 +18,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final List<String> _privacyOptions = ['Public', 'Friends', 'Only Me'];
   bool _isLoading = false;
 
+  String? _attachedFileName;   // e.g. local_file_example.png
+  String? _attachedFileType;   // 'image' or 'video'
+
   Future<void> _createPost() async {
-    if (_contentController.text.trim().isEmpty) {
+    if (_contentController.text.trim().isEmpty && _attachedFileName == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add some content')),
+        const SnackBar(content: Text('Please add some content or attach a file')),
       );
       return;
     }
@@ -26,16 +33,62 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       _isLoading = true;
     });
 
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      // TODO: later use real logged-in user id from auth
+      const int userId = 3;
 
+      final uri = Uri.parse('http://localhost:5000/api/posts');
+
+      final body = {
+        'userId': userId,
+        'content': _contentController.text.trim(),
+        'mediaUrl': _attachedFileName,   // fake local path for now
+        'mediaType': _attachedFileType,  // 'image' or 'video'
+        'privacy': _selectedPrivacy,
+      };
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Post created successfully')),
+        );
+        Navigator.pop(context, true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to create post (${response.statusCode}): ${response.body}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Single button: later replace with real file picker
+  void _onUploadFile() {
     setState(() {
-      _isLoading = false;
+      _attachedFileName = 'local_file_example.png';
+      _attachedFileType = 'image'; // or 'video'
     });
-
-    Navigator.pop(context, {
-      'content': _contentController.text,
-      'privacy': _selectedPrivacy,
-    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('File selected (demo only)')),
+    );
   }
 
   @override
@@ -45,7 +98,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         title: const Text('Create Post'),
         actions: [
           TextButton(
-            onPressed: _createPost,
+            onPressed: _isLoading ? null : _createPost,
             child: _isLoading
                 ? const CircularProgressIndicator(color: Colors.white)
                 : const Text(
@@ -64,7 +117,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 children: [
                   const CircleAvatar(
                     radius: 25,
-                    backgroundImage: AssetImage('assets/images/profile/prof_1.jpg'),
+                    backgroundImage:
+                        AssetImage('assets/images/profile/prof_1.jpg'),
                   ),
                   const SizedBox(width: 10),
                   Column(
@@ -85,11 +139,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                             child: Row(
                               children: [
                                 Icon(
-                                  option == 'Public' 
-                                    ? Icons.public 
-                                    : option == 'Friends' 
-                                      ? Icons.people 
-                                      : Icons.lock,
+                                  option == 'Public'
+                                      ? Icons.public
+                                      : option == 'Friends'
+                                          ? Icons.people
+                                          : Icons.lock,
                                   size: 16,
                                 ),
                                 const SizedBox(width: 8),
@@ -110,56 +164,46 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-              
+
               TextField(
                 controller: _contentController,
                 maxLines: 8,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   hintText: "What's on your mind?",
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.all(12),
+                  contentPadding: EdgeInsets.all(12),
                 ),
               ),
-              
+
+              const SizedBox(height: 16),
+
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Add to your post',
+                        'Attachment (optional)',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _ActionButton(
-                            icon: Icons.photo,
-                            label: 'Photo',
-                            color: Colors.green,
-                            onTap: () {},
-                          ),
-                          _ActionButton(
-                            icon: Icons.video_camera_back,
-                            label: 'Video',
-                            color: Colors.purple,
-                            onTap: () {},
-                          ),
-                          _ActionButton(
-                            icon: Icons.location_on,
-                            label: 'Location',
-                            color: Colors.red,
-                            onTap: () {},
-                          ),
-                          _ActionButton(
-                            icon: Icons.tag,
-                            label: 'Tag',
-                            color: Colors.blue,
-                            onTap: () {},
-                          ),
-                        ],
+                      ElevatedButton.icon(
+                        onPressed: _onUploadFile,
+                        icon: const Icon(Icons.upload_file),
+                        label: const Text('Upload file'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                        ),
                       ),
+                      if (_attachedFileName != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Selected: $_attachedFileName',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -167,37 +211,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          CircleAvatar(
-            backgroundColor: color.withOpacity(0.1),
-            child: Icon(icon, color: color),
-          ),
-          const SizedBox(height: 4),
-          Text(label, style: const TextStyle(fontSize: 12)),
-        ],
       ),
     );
   }
