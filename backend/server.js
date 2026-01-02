@@ -6,7 +6,10 @@ const multer = require('multer');
 const path = require('path');
 
 const app = express();
-const port = 5000;
+
+// OLD: const port = 5000;
+// NEW:
+const PORT = process.env.PORT || 5000;
 
 const dbConfig = {
     user: process.env.DB_USER,
@@ -740,8 +743,6 @@ app.post('/api/chat/messages', async (req, res) => {
     }
 });
 
-
-
 // Search users (for starting new chat)
 app.get('/api/users/search', async (req, res) => {
     const q = (req.query.q || '').trim();
@@ -774,37 +775,6 @@ app.get('/api/users/search', async (req, res) => {
 });
 
 
-
-
-app.get('/api/users/search', async (req, res) => {
-    const q = (req.query.q || '').trim();
-    if (!q) {
-        return res.status(400).json({ message: 'q (query) is required' });
-    }
-
-    try {
-        const pool = req.app.locals.db;
-        const result = await pool
-            .request()
-            .input('Q', sql.NVarChar(150), `%${q}%`)
-            .query(`
-        SELECT TOP 20
-          UserId,
-          FullName,
-          UniversityEmail,
-          ProfileImageUrl
-        FROM Users
-        WHERE FullName LIKE @Q
-           OR UniversityEmail LIKE @Q
-        ORDER BY FullName ASC;
-      `);
-
-        return res.status(200).json({ users: result.recordset });
-    } catch (err) {
-        console.error('User search error:', err);
-        return res.status(500).json({ message: 'Server error' });
-    }
-});
 
 /* ========== CHAT CONVERSATIONS (for chat list) ========== */
 
@@ -846,6 +816,6 @@ app.get('/api/chat/conversations', async (req, res) => {
 
 /* ========== START SERVER ========== */
 
-app.listen(port, () => {
-    console.log(`UniLink backend running on port ${port}`);
+app.listen(PORT, () => {
+    console.log(`UniLink backend running on port ${PORT}`);
 });

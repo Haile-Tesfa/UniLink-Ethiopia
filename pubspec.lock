@@ -120,14 +120,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  gallery_saver_plus:
-    dependency: "direct main"
-    description:
-      name: gallery_saver_plus
-      sha256: fa34416c505a4ace5dc2ef6f20c5776f706c8157adcfaaaf9819f96b68e1f617
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.4.0"
   http:
     dependency: "direct main"
     description:
