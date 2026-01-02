@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -18,32 +21,124 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final List<String> _privacyOptions = ['Public', 'Friends', 'Only Me'];
   bool _isLoading = false;
 
-  String? _attachedFileName;   // e.g. local_file_example.png
-  String? _attachedFileType;   // 'image' or 'video'
+  String? _attachedFileName;
+  String? _attachedFileType; // 'image' or 'video'
+  String? _uploadedMediaUrl; // URL from backend
+
+  static const String _baseUrl = 'http://127.0.0.1:5000';
+
+  Future<void> _pickAndUploadFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'mp4'],
+        // on web we need bytes, on desktop path is enough but this is safe
+        withData: kIsWeb,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final file = result.files.single;
+      final ext = file.extension?.toLowerCase();
+      final isVideo = ext == 'mp4';
+
+      setState(() {
+        _attachedFileName = file.name;
+        _attachedFileType = isVideo ? 'video' : 'image';
+        _uploadedMediaUrl = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Uploading ${file.name} ...')),
+      );
+
+      final uri = Uri.parse('$_baseUrl/api/uploads/post-media');
+      final request = http.MultipartRequest('POST', uri);
+
+      if (kIsWeb) {
+        // WEB: use bytes only, path is always null
+        final Uint8List? bytes = file.bytes;
+        if (bytes == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Cannot read file bytes')),
+          );
+          return;
+        }
+
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'media',
+            bytes,
+            filename: file.name,
+          ),
+        );
+      } else {
+        // DESKTOP / MOBILE: use OS file path
+        final path = file.path;
+        if (path == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File path is null')),
+          );
+          return;
+        }
+
+        request.files.add(
+          await http.MultipartFile.fromPath('media', path),
+        );
+      }
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        setState(() {
+          _uploadedMediaUrl = data['fileUrl'] as String?;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload success: ${file.name}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Upload failed (${response.statusCode}): ${response.body}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Upload error: $e')),
+      );
+    }
+  }
 
   Future<void> _createPost() async {
-    if (_contentController.text.trim().isEmpty && _attachedFileName == null) {
+    if (_contentController.text.trim().isEmpty &&
+        _uploadedMediaUrl == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add some content or attach a file')),
+        const SnackBar(
+          content: Text('Please add some content or attach a file'),
+        ),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // TODO: later use real logged-in user id from auth
       const int userId = 3;
-
-      final uri = Uri.parse('http://localhost:5000/api/posts');
+      final uri = Uri.parse('$_baseUrl/api/posts');
 
       final body = {
         'userId': userId,
         'content': _contentController.text.trim(),
-        'mediaUrl': _attachedFileName,   // fake local path for now
-        'mediaType': _attachedFileType,  // 'image' or 'video'
+        'mediaUrl': _uploadedMediaUrl,
+        'mediaType': _attachedFileType,
         'privacy': _selectedPrivacy,
       };
 
@@ -72,23 +167,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         SnackBar(content: Text('Error: $e')),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) _isLoading = false;
+      setState(() {});
     }
-  }
-
-  // Single button: later replace with real file picker
-  void _onUploadFile() {
-    setState(() {
-      _attachedFileName = 'local_file_example.png';
-      _attachedFileType = 'image'; // or 'video'
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('File selected (demo only)')),
-    );
   }
 
   @override
@@ -164,7 +245,6 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-
               TextField(
                 controller: _contentController,
                 maxLines: 8,
@@ -174,14 +254,13 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   contentPadding: EdgeInsets.all(12),
                 ),
               ),
-
               const SizedBox(height: 16),
-
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
                       const Text(
                         'Attachment (optional)',
@@ -189,7 +268,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       ),
                       const SizedBox(height: 10),
                       ElevatedButton.icon(
-                        onPressed: _onUploadFile,
+                        onPressed: _pickAndUploadFile,
                         icon: const Icon(Icons.upload_file),
                         label: const Text('Upload file'),
                         style: ElevatedButton.styleFrom(
@@ -203,6 +282,22 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           'Selected: $_attachedFileName',
                           style: const TextStyle(fontSize: 12),
                         ),
+                        if (_uploadedMediaUrl == null)
+                          const Text(
+                            'Uploading...',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange,
+                            ),
+                          )
+                        else
+                          const Text(
+                            'Uploaded ✓',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.green,
+                            ),
+                          ),
                       ],
                     ],
                   ),

@@ -11,10 +11,11 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
+class _ProfileScreenState extends State<ProfileScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final List<String> _tabs = ['Posts', 'Saved', 'About'];
-  
+
   final Map<String, dynamic> _user = {
     'id': '1',
     'name': 'Meklit Desalegn',
@@ -25,7 +26,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     'profileImage': 'assets/images/profile/prof_1.jpg',
     'coverImage': 'assets/images/home/post_0.jpg',
     'yearOfStudy': 4,
-    'bio': 'Architecture student passionate about sustainable design and urban planning. Love photography and community projects.',
+    'bio':
+        'Architecture student passionate about sustainable design and urban planning. Love photography and community projects.',
     'phone': '+251 912 345 678',
     'location': 'Addis Ababa, Ethiopia',
     'joinedDate': 'September 2022',
@@ -34,7 +36,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     'followers': 189,
     'following': 156,
   };
-  
+
   final List<Post> _userPosts = [];
   final List<Post> _savedPosts = [];
   bool _isLoading = false;
@@ -68,7 +70,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           userId: _user['id'],
           userName: _user['name'],
           userAvatar: _user['profileImage'],
-          content: 'Final project submission day! Our sustainable campus design got excellent feedback from the professors.',
+          content:
+              'Final project submission day! Our sustainable campus design got excellent feedback from the professors.',
           imageUrl: 'assets/images/home/post_0.jpg',
           likeCount: 245,
           commentCount: 38,
@@ -81,7 +84,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           userId: _user['id'],
           userName: _user['name'],
           userAvatar: _user['profileImage'],
-          content: 'Participated in the university architecture exhibition today. Amazing to see so much talent!',
+          content:
+              'Participated in the university architecture exhibition today. Amazing to see so much talent!',
           imageUrl: null,
           likeCount: 123,
           commentCount: 25,
@@ -94,7 +98,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           userId: _user['id'],
           userName: _user['name'],
           userAvatar: _user['profileImage'],
-          content: 'Working on my thesis: "Sustainable Urban Housing Solutions for Addis Ababa". Any recommendations for resources?',
+          content:
+              'Working on my thesis: "Sustainable Urban Housing Solutions for Addis Ababa". Any recommendations for resources?',
           imageUrl: null,
           likeCount: 89,
           commentCount: 42,
@@ -103,7 +108,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           isSaved: false,
         ),
       ]);
-      
+
       _savedPosts.clear();
       _savedPosts.addAll([
         Post(
@@ -111,7 +116,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           userId: '2',
           userName: 'Abebe Kebede',
           userAvatar: 'assets/images/profile/prof_2.jpg',
-          content: 'Important study tips for finals season that helped me ace my exams!',
+          content:
+              'Important study tips for finals season that helped me ace my exams!',
           imageUrl: null,
           likeCount: 289,
           commentCount: 64,
@@ -124,7 +130,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           userId: '3',
           userName: 'Sara Tesfaye',
           userAvatar: 'assets/images/profile/prof_3.jpg',
-          content: 'Free online courses for Computer Science students - curated list',
+          content:
+              'Free online courses for Computer Science students - curated list',
           imageUrl: null,
           likeCount: 156,
           commentCount: 38,
@@ -133,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           isSaved: true,
         ),
       ]);
-      
+
       _isLoading = false;
     });
   }
@@ -204,7 +211,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           isLiked: post.isLiked,
           isSaved: !post.isSaved,
         );
-        
+
         if (!_savedPosts[index].isSaved) {
           _savedPosts.removeAt(index);
         }
@@ -258,7 +265,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   ),
                 ),
               ),
-              
               SliverToBoxAdapter(
                 child: Container(
                   color: Colors.white,
@@ -286,7 +292,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   ),
                 ),
               ),
-              
               SliverPersistentHeader(
                 delegate: _SliverAppBarDelegate(
                   TabBar(
@@ -326,7 +331,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             );
                           },
                         ),
-              
               _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _savedPosts.isEmpty
@@ -364,7 +368,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             );
                           },
                         ),
-              
               SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -395,9 +398,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         ),
                       ),
                     ),
-                    
                     const SizedBox(height: 20),
-                    
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -436,9 +437,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         ),
                       ),
                     ),
-                    
                     const SizedBox(height: 20),
-                    
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -477,9 +476,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         ),
                       ),
                     ),
-                    
                     const SizedBox(height: 20),
-                    
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -497,7 +494,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             Wrap(
                               spacing: 10,
                               runSpacing: 10,
-                              children: [
+                              children: const [
                                 _ChipItem(label: 'Architecture'),
                                 _ChipItem(label: 'Sustainable Design'),
                                 _ChipItem(label: 'Urban Planning'),
@@ -510,7 +507,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         ),
                       ),
                     ),
-                    
                     const SizedBox(height: 40),
                   ],
                 ),
@@ -548,7 +544,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
-              
               Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -561,9 +556,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    
                     const SizedBox(height: 20),
-                    
                     Expanded(
                       child: SingleChildScrollView(
                         child: Column(
@@ -573,7 +566,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 children: [
                                   CircleAvatar(
                                     radius: 60,
-                                    backgroundImage: AssetImage(_user['profileImage']),
+                                    backgroundImage:
+                                        AssetImage(_user['profileImage']),
                                   ),
                                   Positioned(
                                     bottom: 0,
@@ -594,9 +588,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 ],
                               ),
                             ),
-                            
                             const SizedBox(height: 30),
-                            
                             TextFormField(
                               initialValue: _user['name'],
                               decoration: const InputDecoration(
@@ -604,9 +596,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 border: OutlineInputBorder(),
                               ),
                             ),
-                            
                             const SizedBox(height: 15),
-                            
                             TextFormField(
                               initialValue: _user['bio'],
                               maxLines: 3,
@@ -615,9 +605,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 border: OutlineInputBorder(),
                               ),
                             ),
-                            
                             const SizedBox(height: 15),
-                            
                             TextFormField(
                               initialValue: _user['department'],
                               decoration: const InputDecoration(
@@ -625,19 +613,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 border: OutlineInputBorder(),
                               ),
                             ),
-                            
                             const SizedBox(height: 15),
-                            
                             TextFormField(
-                              initialValue: _user['yearOfStudy'].toString(),
+                              initialValue:
+                                  _user['yearOfStudy'].toString(),
                               decoration: const InputDecoration(
                                 labelText: 'Year of Study',
                                 border: OutlineInputBorder(),
                               ),
                             ),
-                            
                             const SizedBox(height: 15),
-                            
                             TextFormField(
                               initialValue: _user['phone'],
                               decoration: const InputDecoration(
@@ -645,9 +630,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 border: OutlineInputBorder(),
                               ),
                             ),
-                            
                             const SizedBox(height: 15),
-                            
                             TextFormField(
                               initialValue: _user['location'],
                               decoration: const InputDecoration(
@@ -655,26 +638,32 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                                 border: OutlineInputBorder(),
                               ),
                             ),
-                            
                             const SizedBox(height: 30),
-                            
-                            ElevatedButton(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Profile updated successfully'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                minimumSize: const Size(double.infinity, 50),
+
+                            // FIXED BUTTON: constrained width, no infinite constraint
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context)
+                                      .showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                          'Profile updated successfully'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  minimumSize:
+                                      const Size.fromHeight(50),
+                                ),
+                                child: const Text('Save Changes'),
                               ),
-                              child: const Text('Save Changes'),
                             ),
-                            
+
                             const SizedBox(height: 20),
                           ],
                         ),
@@ -818,7 +807,7 @@ class _InfoRow extends StatelessWidget {
             ),
           ),
         ],
-      )
+      ),
     );
   }
 }
@@ -833,9 +822,9 @@ class _ChipItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        // ignore: deprecated_member_use
         color: AppColors.primary.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
       ),
@@ -861,7 +850,8 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => tabBar.preferredSize.height;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
       color: Colors.white,
       child: tabBar,

@@ -7,9 +7,13 @@ import '../../widgets/enhanced_bottom_navbar.dart';
 import '../../widgets/marketplace_item_card.dart';
 import '../../models/marketplace_model.dart';
 import '../../utils/colors.dart';
+import '../home/home_feed.dart';
+import '../chat/chat_screen.dart';
 
 class MarketplaceHome extends StatefulWidget {
-  const MarketplaceHome({super.key});
+  final int currentUserId;
+
+  const MarketplaceHome({super.key, required this.currentUserId});
 
   @override
   State<MarketplaceHome> createState() => _MarketplaceHomeState();
@@ -30,8 +34,11 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
   List<MarketplaceItem> _items = [];
   bool _isLoading = false;
 
-  // NEW: state for price range filter
   RangeValues _priceRange = const RangeValues(0, 5000);
+
+  int get _currentUserId => widget.currentUserId;
+
+  static const String _baseUrl = 'http://127.0.0.1:5000';
 
   @override
   void initState() {
@@ -45,8 +52,7 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
     });
 
     try {
-      // For Chrome / Windows: use localhost instead of 10.0.2.2
-      final uri = Uri.parse('http://localhost:5000/api/marketplace/items');
+      final uri = Uri.parse('$_baseUrl/api/marketplace/items');
       final response = await http.get(uri);
 
       if (response.statusCode == 200) {
@@ -66,18 +72,15 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
         setState(() {
           _isLoading = false;
         });
-        // optional: show error SnackBar
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      // optional: show error SnackBar
     }
   }
 
   List<MarketplaceItem> get _filteredItems {
-    // Currently only filters by category; later you can also use _priceRange
     if (_selectedCategory == 'All') return _items;
     return _items
         .where((item) => item.category == _selectedCategory)
@@ -109,6 +112,8 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
 
   @override
   Widget build(BuildContext context) {
+    final scaffoldContext = context;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Marketplace'),
@@ -120,7 +125,7 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: () {
-              _showFilterDialog();
+              _showFilterDialog(scaffoldContext);
             },
           ),
         ],
@@ -175,7 +180,7 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
                           return MarketplaceItemCard(
                             item: item,
                             onTap: () {
-                              _showItemDetails(item);
+                              _showItemDetails(item, scaffoldContext);
                             },
                             onFavorite: () => _toggleFavorite(item.id),
                           );
@@ -189,9 +194,21 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
         onTap: (index) {
           setState(() => _currentIndex = index);
           if (index == 0) {
-            Navigator.pushReplacementNamed(context, '/home');
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => HomeFeed(currentUserId: _currentUserId),
+              ),
+            );
+          } else if (index == 1) {
+            // already here
           } else if (index == 2) {
-            Navigator.pushReplacementNamed(context, '/chat');
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(currentUserId: _currentUserId),
+              ),
+            );
           } else if (index == 3) {
             Navigator.pushReplacementNamed(context, '/profile');
           }
@@ -200,10 +217,10 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
     );
   }
 
-  void _showFilterDialog() {
+  void _showFilterDialog(BuildContext scaffoldContext) {
     showDialog(
-      context: context,
-      builder: (context) {
+      context: scaffoldContext,
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Filter Items'),
           content: SizedBox(
@@ -212,7 +229,6 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text('Price Range'),
-                // FIXED: non-const RangeSlider using state
                 RangeSlider(
                   values: _priceRange,
                   min: 0,
@@ -236,9 +252,7 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
                     return FilterChip(
                       label: Text(cond),
                       selected: false,
-                      onSelected: (selected) {
-                        // later you can add condition filter state here
-                      },
+                      onSelected: (selected) {},
                     );
                   }).toList(),
                 ),
@@ -247,13 +261,12 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () {
-                // later you can apply price/condition filters here
-                Navigator.pop(context);
+                Navigator.pop(dialogContext);
               },
               child: const Text('Apply'),
             ),
@@ -263,13 +276,13 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
     );
   }
 
-  void _showItemDetails(MarketplaceItem item) {
+  void _showItemDetails(MarketplaceItem item, BuildContext scaffoldContext) {
     showModalBottomSheet(
-      context: context,
+      context: scaffoldContext,
       isScrollControlled: true,
-      builder: (context) {
+      builder: (sheetContext) {
         return Container(
-          height: MediaQuery.of(context).size.height * 0.8,
+          height: MediaQuery.of(sheetContext).size.height * 0.8,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,7 +385,10 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _openMessageSeller(item, scaffoldContext);
+                      },
                       icon: const Icon(Icons.message),
                       label: const Text('Message Seller'),
                       style: ElevatedButton.styleFrom(
@@ -384,7 +400,10 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _confirmBuyNow(item, scaffoldContext);
+                      },
                       icon: const Icon(Icons.shopping_cart),
                       label: const Text('Buy Now'),
                       style: OutlinedButton.styleFrom(
@@ -396,6 +415,139 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  void _openMessageSeller(
+      MarketplaceItem item, BuildContext scaffoldContext) {
+    showModalBottomSheet(
+      context: scaffoldContext,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final TextEditingController msgCtrl = TextEditingController();
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Message ${item.sellerName}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: msgCtrl,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Hi, is ${item.title} still available?',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final text = msgCtrl.text.trim();
+                    if (text.isEmpty) return;
+
+                    try {
+                      final uri =
+                          Uri.parse('$_baseUrl/api/messages');
+                      final body = jsonEncode({
+                        'itemId': item.id,
+                        'buyerId': _currentUserId,
+                        'sellerId': item.sellerId,
+                        'messageText': text,
+                      });
+
+                      final response = await http.post(
+                        uri,
+                        headers: {'Content-Type': 'application/json'},
+                        body: body,
+                      );
+
+                      Navigator.pop(sheetContext);
+
+                      if (response.statusCode == 200 ||
+                          response.statusCode == 201) {
+                        ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                          const SnackBar(
+                            content: Text('Message saved for seller.'),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Failed to send message: ${response.statusCode}',
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      Navigator.pop(sheetContext);
+                      ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                        SnackBar(
+                          content: Text('Error sending message: $e'),
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Send'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmBuyNow(MarketplaceItem item, BuildContext scaffoldContext) {
+    showDialog(
+      context: scaffoldContext,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm Purchase'),
+          content: Text(
+            'Do you want to buy "${item.title}" for ETB ${item.price.toStringAsFixed(2)}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                  const SnackBar(
+                    content:
+                        Text('System busy, please try again later.'),
+                  ),
+                );
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
         );
       },
     );

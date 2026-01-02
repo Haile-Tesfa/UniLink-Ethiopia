@@ -17,6 +17,14 @@ class StoryCircle extends StatelessWidget {
     required this.onTap,
   });
 
+  ImageProvider _buildImageProvider() {
+    // Decide between network and asset image
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return NetworkImage(imagePath);
+    }
+    return AssetImage(imagePath);
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -48,7 +56,6 @@ class StoryCircle extends StatelessWidget {
                           ),
                   ),
                 ),
-
                 Container(
                   width: 64,
                   height: 64,
@@ -73,10 +80,9 @@ class StoryCircle extends StatelessWidget {
                           ),
                         )
                       : CircleAvatar(
-                          backgroundImage: AssetImage(imagePath),
+                          backgroundImage: _buildImageProvider(),
                         ),
                 ),
-
                 if (isMe)
                   Positioned(
                     bottom: 0,
@@ -101,9 +107,7 @@ class StoryCircle extends StatelessWidget {
                   ),
               ],
             ),
-
             const SizedBox(height: 5),
-
             Text(
               name,
               style: const TextStyle(

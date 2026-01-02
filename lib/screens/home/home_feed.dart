@@ -1,32 +1,42 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart'; // kIsWeb
 import 'package:flutter/material.dart';
-import 'package:unilink_ethiopia/widgets/marketplace_item_card.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import '../../models/post_model.dart';
 import '../../widgets/post_widget.dart';
 import '../../widgets/enhanced_bottom_navbar.dart';
 import '../../widgets/custom_floating_action_button.dart';
 import '../../widgets/story_circle.dart';
-import '../../widgets/app_logo.dart';
-import '../search/search_screen.dart';
-import '../post/create_post_screen.dart';
-import '../notifications/notifications_screen.dart';
 import '../../utils/colors.dart';
+import '../chat/chat_screen.dart';
 
 class HomeFeed extends StatefulWidget {
-  const HomeFeed({super.key});
+  final int currentUserId;
+
+  const HomeFeed({super.key, required this.currentUserId});
 
   @override
   State<HomeFeed> createState() => _HomeFeedState();
 }
 
 class _HomeFeedState extends State<HomeFeed> {
+  // IMPORTANT: if you test Flutter web on another device, change this to your PC IP.
+  static const String _baseUrl = 'http://127.0.0.1:5000';
+
   int _currentIndex = 0;
   bool _isLoading = false;
   final List<Post> _posts = [];
   final List<Post> _savedPosts = [];
-  
-  final List<Map<String, dynamic>> _stories = [
+
+  final List<Map<String, dynamic>> _baseStories = [
     {
-      'id': '1',
+      'id': 'me',
       'name': 'Your Story',
       'image': 'assets/images/profile/prof_1.jpg',
       'isMe': true,
@@ -62,6 +72,27 @@ class _HomeFeedState extends State<HomeFeed> {
     },
   ];
 
+  List<Map<String, dynamic>> get _stories {
+    final List<Map<String, dynamic>> stories =
+        _baseStories.map((e) => Map<String, dynamic>.from(e)).toList();
+
+    for (final post in _posts) {
+      if (post.imageUrl == null || post.imageUrl!.isEmpty) continue;
+
+      stories.add({
+        'id': post.id,
+        'name': post.userName,
+        'image': post.imageUrl!,
+        'isMe': false,
+        'hasNew': true,
+      });
+
+      if (stories.length >= 20) break;
+    }
+
+    return stories;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -73,66 +104,64 @@ class _HomeFeedState extends State<HomeFeed> {
       _isLoading = true;
     });
 
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final uri = Uri.parse('$_baseUrl/api/posts');
+      debugPrint('GET $uri');
+      final response = await http.get(uri);
 
-    setState(() {
-      _posts.clear();
-      _posts.addAll([
-        Post(
-          id: '1',
-          userId: '1',
-          userName: 'Meklit Desalegn',
-          userAvatar: 'assets/images/profile/prof_1.jpg',
-          content: 'Just completed my final architecture project! The design focuses on sustainable living spaces for urban areas. So proud of this achievement after months of hard work. 🎓✨',
-          imageUrl: 'assets/images/home/post_0.jpg',
-          likeCount: 245,
-          commentCount: 38,
-          createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-          isLiked: true,
-          isSaved: false,
-        ),
-        Post(
-          id: '2',
-          userId: '2',
-          userName: 'Abebe Kebede',
-          userAvatar: 'assets/images/profile/prof_2.jpg',
-          content: 'Finally finished my final exams! 🎉 Time to relax and work on personal projects. Looking forward to the break and catching up on some reading.',
-          imageUrl: 'assets/images/home/post_1.jpg',
-          likeCount: 156,
-          commentCount: 42,
-          createdAt: DateTime.now().subtract(const Duration(hours: 5)),
-          isLiked: false,
-          isSaved: true,
-        ),
-        Post(
-          id: '3',
-          userId: '3',
-          userName: 'Sara Tesfaye',
-          userAvatar: 'assets/images/profile/prof_3.jpg',
-          content: 'Looking for study partners for Data Structures exam next week. If anyone wants to join our study group, DM me! We\'re meeting at the library every evening.',
-          imageUrl: null,
-          likeCount: 78,
-          commentCount: 25,
-          createdAt: DateTime.now().subtract(const Duration(days: 1)),
-          isLiked: true,
-          isSaved: false,
-        ),
-        Post(
-          id: '4',
-          userId: '4',
-          userName: 'John Doe',
-          userAvatar: 'assets/images/profile/prof_1.jpg',
-          content: 'University hackathon registration is open! 🚀 Teams of 3-4, prizes up to 50,000 ETB. DM if you\'re looking for team members. #Tech #Innovation',
-          imageUrl: null,
-          likeCount: 189,
-          commentCount: 56,
-          createdAt: DateTime.now().subtract(const Duration(days: 2)),
-          isLiked: false,
-          isSaved: true,
-        ),
-      ]);
-      _isLoading = false;
-    });
+      debugPrint('Posts status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final List<dynamic> list = data['posts'] as List<dynamic>;
+
+        final loadedPosts = list.map((raw) {
+          final row = raw as Map<String, dynamic>;
+
+          String? mediaUrl = row['MediaUrl'] as String?;
+          if (mediaUrl != null && mediaUrl.isNotEmpty) {
+            mediaUrl = '$_baseUrl$mediaUrl';
+          }
+
+          return Post(
+            id: row['PostId'].toString(),
+            userId: row['UserId'].toString(),
+            userName: 'User ${row['UserId']}',
+            userAvatar: 'assets/images/profile/prof_1.jpg',
+            content: (row['Content'] ?? '') as String,
+            imageUrl: mediaUrl,
+            likeCount: 0,
+            commentCount: 0,
+            createdAt: DateTime.parse(row['CreatedAt'].toString()),
+            isLiked: false,
+            isSaved: false,
+          );
+        }).toList();
+
+        debugPrint('Loaded ${loadedPosts.length} posts');
+
+        setState(() {
+          _posts
+            ..clear()
+            ..addAll(loadedPosts);
+        });
+      } else {
+        debugPrint(
+          'Failed to load posts: ${response.statusCode} ${response.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error loading posts: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshPosts() async {
+    await _loadPosts();
   }
 
   void _toggleLike(String postId) {
@@ -163,7 +192,7 @@ class _HomeFeedState extends State<HomeFeed> {
       if (index != -1) {
         final post = _posts[index];
         final isNowSaved = !post.isSaved;
-        
+
         _posts[index] = Post(
           id: post.id,
           userId: post.userId,
@@ -177,7 +206,7 @@ class _HomeFeedState extends State<HomeFeed> {
           isLiked: post.isLiked,
           isSaved: isNowSaved,
         );
-        
+
         if (isNowSaved) {
           _savedPosts.add(_posts[index]);
         } else {
@@ -185,10 +214,6 @@ class _HomeFeedState extends State<HomeFeed> {
         }
       }
     });
-  }
-
-  Future<void> _refreshPosts() async {
-    await _loadPosts();
   }
 
   @override
@@ -244,7 +269,7 @@ class _HomeFeedState extends State<HomeFeed> {
       floatingActionButton: CustomFloatingActionButton(
         onPressed: () {
           Navigator.pushNamed(context, '/create-post').then((value) {
-            if (value != null) {
+            if (value == true) {
               _refreshPosts();
             }
           });
@@ -255,12 +280,9 @@ class _HomeFeedState extends State<HomeFeed> {
         color: AppColors.primary,
         child: CustomScrollView(
           slivers: [
-            // Stories Section
             SliverToBoxAdapter(
               child: _buildStoriesSection(),
             ),
-            
-            // Posts Section
             _isLoading && _posts.isEmpty
                 ? const SliverFillRemaining(
                     child: Center(child: CircularProgressIndicator()),
@@ -272,13 +294,9 @@ class _HomeFeedState extends State<HomeFeed> {
                         return PostWidget(
                           post: post,
                           onLike: () => _toggleLike(post.id),
-                          onComment: () {
-                            // Handle comment
-                          },
+                          onComment: () => _openComments(post),
                           onSave: () => _toggleSave(post.id),
-                          onShare: () {
-                            _sharePost(post);
-                          },
+                          onShare: () => _sharePost(post),
                         );
                       },
                       childCount: _posts.length,
@@ -294,7 +312,13 @@ class _HomeFeedState extends State<HomeFeed> {
           if (index == 1) {
             Navigator.pushNamed(context, '/marketplace');
           } else if (index == 2) {
-            Navigator.pushNamed(context, '/chat');
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    ChatScreen(currentUserId: widget.currentUserId),
+              ),
+            );
           } else if (index == 3) {
             Navigator.pushNamed(context, '/profile');
           }
@@ -308,26 +332,202 @@ class _HomeFeedState extends State<HomeFeed> {
   }
 
   Widget _buildStoriesSection() {
+    final stories = _stories;
+
     return Container(
       height: 120,
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: _stories.length,
+        itemCount: stories.length,
         itemBuilder: (context, index) {
-          final story = _stories[index];
+          final story = stories[index];
+          final bool isMe = story['isMe'] as bool;
+
           return StoryCircle(
-            name: story['name'],
-            imagePath: story['image'],
-            isMe: story['isMe'],
-            hasNew: story['hasNew'],
+            name: story['name'] as String,
+            imagePath: story['image'] as String,
+            isMe: isMe,
+            hasNew: story['hasNew'] as bool,
             onTap: () {
-              // Handle story tap
+              if (isMe) {
+                Navigator.pushNamed(context, '/create-post').then((value) {
+                  if (value == true) {
+                    _refreshPosts();
+                  }
+                });
+              } else {
+                // open story viewer later
+              }
             },
           );
         },
       ),
     );
+  }
+
+  void _openComments(Post post) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final TextEditingController commentCtrl = TextEditingController();
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Comments for ${post.userName}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: commentCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Write a comment...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final text = commentCtrl.text.trim();
+                    if (text.isEmpty) return;
+
+                    try {
+                      final uri = Uri.parse('$_baseUrl/api/comments');
+                      final body = jsonEncode({
+                        'postId': int.parse(post.id),
+                        'authorId': widget.currentUserId,
+                        'postOwnerId': int.parse(post.userId),
+                        'commentText': text,
+                      });
+
+                      final response = await http.post(
+                        uri,
+                        headers: {'Content-Type': 'application/json'},
+                        body: body,
+                      );
+
+                      Navigator.pop(sheetContext);
+
+                      if (response.statusCode == 200 ||
+                          response.statusCode == 201) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Comment saved.')),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Failed to save comment: ${response.statusCode}',
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      Navigator.pop(sheetContext);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error sending comment: $e'),
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Send'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _shareImageUrl(Post post) async {
+    final url = post.imageUrl;
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No image to share')),
+      );
+      return;
+    }
+
+    await Share.share(
+      url,
+      subject: 'Check this post from UniLink',
+    );
+  }
+
+  Future<void> _shareTextMessage(Post post) async {
+    final url = post.imageUrl ?? '';
+    final text = 'Check this post from UniLink\n$url';
+    await Share.share(
+      text,
+      subject: 'UniLink Post',
+    );
+  }
+
+  Future<void> _copyImageUrl(Post post) async {
+    final url = post.imageUrl;
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No link to copy')),
+      );
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: url));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Link copied to clipboard')),
+    );
+  }
+
+  Future<void> _saveImageToGallery(Post post) async {
+    final url = post.imageUrl;
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No image to save')),
+      );
+      return;
+    }
+
+    if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saving to gallery is only supported on mobile build'),
+        ),
+      );
+      return;
+    }
+
+    if (Platform.isAndroid) {
+      final status = await Permission.storage.request();
+      if (!status.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Storage permission denied')),
+        );
+        return;
+      }
+    }
+
+    // implement real gallery save on mobile if you add a plugin
   }
 
   void _sharePost(Post post) {
@@ -341,30 +541,34 @@ class _HomeFeedState extends State<HomeFeed> {
               ListTile(
                 leading: const Icon(Icons.share),
                 title: const Text('Share to Feed'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
+                  await _shareImageUrl(post);
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.message),
                 title: const Text('Send in Message'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
+                  await _shareTextMessage(post);
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.copy),
                 title: const Text('Copy Link'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
+                  await _copyImageUrl(post);
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.bookmark),
                 title: const Text('Save Post'),
-                onTap: () {
-                  _toggleSave(post.id);
+                onTap: () async {
                   Navigator.pop(context);
+                  _toggleSave(post.id);
+                  await _saveImageToGallery(post);
                 },
               ),
               const Divider(),
