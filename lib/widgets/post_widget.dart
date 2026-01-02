@@ -29,6 +29,7 @@ class PostWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header: avatar, name, time, menu
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -53,10 +54,17 @@ class PostWidget extends StatelessWidget {
                         children: [
                           Text(
                             _formatTime(post.createdAt),
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
                           ),
                           const SizedBox(width: 4),
-                          const Icon(Icons.public, size: 12, color: Colors.grey),
+                          const Icon(
+                            Icons.public,
+                            size: 12,
+                            color: Colors.grey,
+                          ),
                         ],
                       ),
                     ],
@@ -71,30 +79,29 @@ class PostWidget extends StatelessWidget {
               ],
             ),
           ),
-          
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              post.content,
-              style: const TextStyle(fontSize: 15, height: 1.4),
+
+          // Content text
+          if (post.content.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                post.content,
+                style: const TextStyle(fontSize: 15, height: 1.4),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          
-          if (post.imageUrl != null)
+          if (post.content.isNotEmpty) const SizedBox(height: 10),
+
+          // Image (asset or network)
+          if (post.imageUrl != null && post.imageUrl!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.asset(
-                  post.imageUrl!,
-                  height: 250,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
+                child: _buildPostImage(post.imageUrl!),
               ),
             ),
-          
+
+          // Like & comment counts
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
@@ -108,7 +115,11 @@ class PostWidget extends StatelessWidget {
                         color: Colors.red[50],
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.favorite, size: 12, color: Colors.red),
+                      child: const Icon(
+                        Icons.favorite,
+                        size: 12,
+                        color: Colors.red,
+                      ),
                     ),
                     const SizedBox(width: 4),
                     Text('${post.likeCount}'),
@@ -118,14 +129,16 @@ class PostWidget extends StatelessWidget {
               ],
             ),
           ),
-          
+
+          // Action buttons row
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
               children: [
                 Expanded(
                   child: _PostActionButton(
-                    icon: post.isLiked ? Icons.favorite : Icons.favorite_border,
+                    icon:
+                        post.isLiked ? Icons.favorite : Icons.favorite_border,
                     label: 'Like',
                     isActive: post.isLiked,
                     onTap: onLike,
@@ -147,7 +160,8 @@ class PostWidget extends StatelessWidget {
                 ),
                 Expanded(
                   child: _PostActionButton(
-                    icon: post.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                    icon:
+                        post.isSaved ? Icons.bookmark : Icons.bookmark_border,
                     label: 'Save',
                     isActive: post.isSaved,
                     onTap: onSave,
@@ -161,10 +175,30 @@ class PostWidget extends StatelessWidget {
     );
   }
 
+  // NEW: decide between network and asset image
+  Widget _buildPostImage(String url) {
+    final isNetwork =
+        url.startsWith('http://') || url.startsWith('https://');
+
+    return SizedBox(
+      height: 250,
+      width: double.infinity,
+      child: isNetwork
+          ? Image.network(
+              url,
+              fit: BoxFit.cover,
+            )
+          : Image.asset(
+              url,
+              fit: BoxFit.cover,
+            ),
+    );
+  }
+
   String _formatTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
-    
+
     if (difference.inSeconds < 60) {
       return 'Just now';
     } else if (difference.inMinutes < 60) {

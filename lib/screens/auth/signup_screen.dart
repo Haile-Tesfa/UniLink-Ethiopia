@@ -63,8 +63,9 @@ class _SignupScreenState extends State<SignupScreen> {
       // print('BODY: ${response.body}');
 
       if (response.statusCode == 201) {
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
+  Navigator.pushReplacementNamed(context, '/login');
+}
+ else {
         String msg = 'Signup failed';
         try {
           final body = jsonDecode(response.body);

@@ -7,7 +7,7 @@ class NotificationModel {
   final String body;
   final String? senderId;
   final String? senderName;
-  final String? senderImage;
+  final String? senderImage; // can be URL or null
   final String? postId;
   final String? itemId;
   final DateTime timestamp;
@@ -59,5 +59,39 @@ class NotificationModel {
       default:
         return Colors.grey;
     }
+  }
+
+  factory NotificationModel.fromJson(Map<String, dynamic> json) {
+    return NotificationModel(
+      id: json['id'].toString(),
+      type: json['type'] as String,
+      title: json['title'] as String,
+      body: json['body'] as String,
+      senderId: json['senderId']?.toString(),
+      senderName: json['senderName'] as String?,
+      senderImage: json['senderImage'] as String?,
+      postId: json['postId']?.toString(),
+      itemId: json['itemId']?.toString(),
+      timestamp: DateTime.parse(json['timestamp'] as String),
+      isRead: json['isRead'] as bool? ?? false,
+    );
+  }
+
+  NotificationModel copyWith({
+    bool? isRead,
+  }) {
+    return NotificationModel(
+      id: id,
+      type: type,
+      title: title,
+      body: body,
+      senderId: senderId,
+      senderName: senderName,
+      senderImage: senderImage,
+      postId: postId,
+      itemId: itemId,
+      timestamp: timestamp,
+      isRead: isRead ?? this.isRead,
+    );
   }
 }

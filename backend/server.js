@@ -22,6 +22,24 @@ const dbConfig = {
 app.use(cors());
 app.use(express.json());
 
+// ====== FILE UPLOAD CONFIG ======
+const uploadDir = path.join(__dirname, 'uploads');
+app.use('/uploads', express.static(uploadDir));
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        const ext = path.extname(file.originalname);
+        cb(null, 'media-' + uniqueSuffix + ext);
+    },
+});
+
+const upload = multer({ storage });
+
+// ====== DB CONNECT ======
 sql
     .connect(dbConfig)
     .then((pool) => {
@@ -32,8 +50,9 @@ sql
         console.error('SQL connection error:', err);
     });
 
+/* ========== AUTH ROUTES ========== */
 
-// AUTH: SIGNUP
+// SIGNUP
 app.post('/api/auth/signup', async (req, res) => {
     const { fullName, email, studentId, department, yearOfStudy, password } =
         req.body;
@@ -121,7 +140,7 @@ app.post('/api/auth/signup', async (req, res) => {
     }
 });
 
-// AUTH: LOGIN
+// LOGIN
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
 
@@ -146,7 +165,8 @@ app.post('/api/auth/login', async (req, res) => {
           StudentId,
           Department,
           YearOfStudy,
-          CreatedAt
+          CreatedAt,
+          ProfileImageUrl
         FROM Users
         WHERE UniversityEmail = @Email
           AND PasswordHash = HASHBYTES('SHA2_256', @Password);
@@ -170,6 +190,7 @@ app.post('/api/auth/login', async (req, res) => {
                 department: user.Department,
                 yearOfStudy: user.YearOfStudy,
                 createdAt: user.CreatedAt,
+                profileImageUrl: user.ProfileImageUrl || null,
             },
         });
     } catch (err) {
@@ -178,7 +199,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// AUTH: FORGOT PASSWORD (check email)
+// FORGOT PASSWORD
 app.post('/api/auth/forgot-password', async (req, res) => {
     const { email } = req.body;
 
@@ -211,7 +232,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 });
 
-// AUTH: RESET PASSWORD
+// RESET PASSWORD
 app.post('/api/auth/reset-password', async (req, res) => {
     const { email, newPassword } = req.body;
 
@@ -255,7 +276,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
 });
 
-// AUTH: GOOGLE DUMMY LOGIN
+// GOOGLE / FACEBOOK dummy routes
 app.post('/api/auth/google', async (req, res) => {
     const { idToken } = req.body;
     console.log('Google fake login, idToken:', idToken);
@@ -264,14 +285,12 @@ app.post('/api/auth/google', async (req, res) => {
         return res.status(400).json({ message: 'Missing idToken' });
     }
 
-    // TODO: verify real Google token here
     return res.status(200).json({
         message: 'Google login success (dummy)',
         user: { id: 0, name: 'Google User' },
     });
 });
 
-// AUTH: FACEBOOK DUMMY LOGIN
 app.post('/api/auth/facebook', async (req, res) => {
     const { accessToken } = req.body;
     console.log('Facebook fake login, accessToken:', accessToken);
@@ -280,14 +299,29 @@ app.post('/api/auth/facebook', async (req, res) => {
         return res.status(400).json({ message: 'Missing accessToken' });
     }
 
-    // TODO: verify real Facebook token here
     return res.status(200).json({
         message: 'Facebook login success (dummy)',
         user: { id: 0, name: 'Facebook User' },
     });
 });
 
-// MARKETPLACE: GET ITEMS
+/* ========== FILE UPLOAD ROUTE ========== */
+
+app.post('/api/uploads/post-media', upload.single('media'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const fileUrl = `/uploads/${req.file.filename}`;
+
+    return res.status(201).json({
+        message: 'File uploaded',
+        fileUrl,
+    });
+});
+
+/* ========== MARKETPLACE ROUTES ========== */
+
 app.get('/api/marketplace/items', async (req, res) => {
     const category = req.query.category;
     try {
@@ -313,7 +347,6 @@ app.get('/api/marketplace/items', async (req, res) => {
     }
 });
 
-// MARKETPLACE: CREATE ITEM
 app.post('/api/marketplace/items', async (req, res) => {
     const {
         sellerId,
@@ -367,14 +400,12 @@ app.post('/api/marketplace/items', async (req, res) => {
     }
 });
 
+/* ========== MESSAGES ROUTES (Marketplace) ========== */
 
+app.post('/api/messages', async (req, res) => {
+    const { itemId, buyerId, sellerId, messageText } = req.body;
 
-
-// POSTS: CREATE
-app.post('/api/posts', async (req, res) => {
-    const { userId, content, mediaUrl, mediaType, privacy } = req.body;
-
-    if (!userId || !content || !privacy) {
+    if (!itemId || !buyerId || !sellerId || !messageText) {
         return res.status(400).json({ message: 'Missing required fields' });
     }
 
@@ -382,15 +413,99 @@ app.post('/api/posts', async (req, res) => {
         const pool = req.app.locals.db;
         await pool
             .request()
+            .input('ItemId', sql.Int, itemId)
+            .input('BuyerId', sql.Int, buyerId)
+            .input('SellerId', sql.Int, sellerId)
+            .input('MessageText', sql.NVarChar(1000), messageText)
+            .query(`
+        INSERT INTO Messages (ItemId, BuyerId, SellerId, MessageText)
+        VALUES (@ItemId, @BuyerId, @SellerId, @MessageText);
+      `);
+
+        return res.status(201).json({ message: 'Message created successfully' });
+    } catch (err) {
+        console.error('Create message error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+/* ========== COMMENTS ROUTES ========== */
+
+app.post('/api/comments', async (req, res) => {
+    const { postId, authorId, postOwnerId, commentText } = req.body;
+
+    if (!postId || !authorId || !postOwnerId || !commentText) {
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+        const pool = req.app.locals.db;
+        await pool
+            .request()
+            .input('PostId', sql.Int, postId)
+            .input('AuthorId', sql.Int, authorId)
+            .input('PostOwnerId', sql.Int, postOwnerId)
+            .input('CommentText', sql.NVarChar(1000), commentText)
+            .query(`
+        INSERT INTO Comments (PostId, AuthorId, PostOwnerId, CommentText)
+        VALUES (@PostId, @AuthorId, @PostOwnerId, @CommentText);
+      `);
+
+        return res.status(201).json({ message: 'Comment saved' });
+    } catch (err) {
+        console.error('Create comment error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+app.get('/api/comments/:postId', async (req, res) => {
+    const postId = parseInt(req.params.postId, 10);
+    if (!postId) return res.status(400).json({ message: 'Invalid post id' });
+
+    try {
+        const pool = req.app.locals.db;
+        const result = await pool
+            .request()
+            .input('PostId', sql.Int, postId)
+            .query(`
+        SELECT CommentId, PostId, AuthorId, PostOwnerId, CommentText, CreatedAt
+        FROM Comments
+        WHERE PostId = @PostId
+        ORDER BY CreatedAt ASC;
+      `);
+
+        return res.status(200).json({ comments: result.recordset });
+    } catch (err) {
+        console.error('Get comments error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+/* ========== POSTS: CREATE ========== */
+
+app.post('/api/posts', async (req, res) => {
+    const { userId, content, mediaUrl, mediaType, privacy } = req.body;
+
+    if (!userId || !privacy) {
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    const safeContent =
+        content && typeof content === 'string' ? content : '';
+
+    try {
+        const pool = req.app.locals.db;
+        await pool
+            .request()
             .input('UserId', sql.Int, userId)
-            .input('Content', sql.NVarChar(2000), content)
+            .input('Content', sql.NVarChar(2000), safeContent)
             .input('MediaUrl', sql.NVarChar(300), mediaUrl || null)
             .input('MediaType', sql.NVarChar(20), mediaType || null)
             .input('Privacy', sql.NVarChar(20), privacy)
             .query(`
-                INSERT INTO Posts (UserId, Content, MediaUrl, MediaType, Privacy)
-                VALUES (@UserId, @Content, @MediaUrl, @MediaType, @Privacy);
-            `);
+        INSERT INTO Posts (UserId, Content, MediaUrl, MediaType, Privacy)
+        VALUES (@UserId, @Content, @MediaUrl, @MediaType, @Privacy);
+      `);
 
         return res.status(201).json({ message: 'Post created successfully' });
     } catch (err) {
@@ -399,10 +514,34 @@ app.post('/api/posts', async (req, res) => {
     }
 });
 
+/* ========== POSTS: GET (home feed) ========== */
 
+app.get('/api/posts', async (req, res) => {
+    try {
+        const pool = req.app.locals.db;
 
+        const result = await pool.request().query(`
+      SELECT
+        PostId,
+        UserId,
+        Content,
+        MediaUrl,
+        MediaType,
+        Privacy,
+        CreatedAt
+      FROM Posts
+      ORDER BY CreatedAt DESC;
+    `);
 
-// NOTIFICATIONS: GET
+        return res.status(200).json({ posts: result.recordset });
+    } catch (err) {
+        console.error('Get posts error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+/* ========== NOTIFICATIONS: LIST ========== */
+
 app.get('/api/notifications/:userId', async (req, res) => {
     const userId = parseInt(req.params.userId, 10);
     if (!userId) return res.status(400).json({ message: 'Invalid user id' });
@@ -428,47 +567,95 @@ app.get('/api/notifications/:userId', async (req, res) => {
     }
 });
 
-// NOTIFICATIONS: MARK ALL READ
-app.post('/api/notifications/:userId/mark-all-read', async (req, res) => {
-    const userId = parseInt(req.params.userId, 10);
-    if (!userId) return res.status(400).json({ message: 'Invalid user id' });
+/* ========== NOTIFICATIONS: MARK READ ========== */
 
-    try {
-        const pool = req.app.locals.db;
-        await pool
-            .request()
-            .input('UserId', sql.Int, userId)
-            .query(`
-        UPDATE Notifications
-        SET IsRead = 1
-        WHERE UserId = @UserId AND IsRead = 0;
-      `);
-        return res.status(200).json({ message: 'All notifications marked as read' });
-    } catch (err) {
-        console.error('Mark all notifications read error:', err);
-        return res.status(500).json({ message: 'Server error' });
-    }
-});
+app.post('/api/notifications/mark-read', async (req, res) => {
+    const { notificationId } = req.body;
 
-// CHAT: GET MESSAGES
-app.get('/api/chat/:userId/:otherUserId', async (req, res) => {
-    const userId = parseInt(req.params.userId, 10);
-    const otherUserId = parseInt(req.params.otherUserId, 10);
-    if (!userId || !otherUserId) {
-        return res.status(400).json({ message: 'Invalid user ids' });
+    if (!notificationId) {
+        return res.status(400).json({ message: 'notificationId is required' });
     }
 
     try {
         const pool = req.app.locals.db;
         const result = await pool
             .request()
-            .input('UserId', sql.Int, userId)
-            .input('OtherUserId', sql.Int, otherUserId)
+            .input('NotificationId', sql.Int, notificationId)
             .query(`
-        SELECT MessageId, SenderId, ReceiverId, Content, Timestamp, IsRead
+        UPDATE Notifications
+        SET IsRead = 1
+        WHERE NotificationId = @NotificationId;
+      `);
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ message: 'Notification not found' });
+        }
+
+        return res.status(200).json({ message: 'Marked as read' });
+    } catch (err) {
+        console.error('Mark notification read error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+/* ========== NOTIFICATIONS: UNREAD COUNT ========== */
+
+app.get('/api/notifications/:userId/unread-count', async (req, res) => {
+    const userId = parseInt(req.params.userId, 10);
+    if (!userId) return res.status(400).json({ message: 'Invalid user id' });
+
+    try {
+        const pool = req.app.locals.db;
+        const result = await pool
+            .request()
+            .input('UserId', sql.Int, userId)
+            .query(`
+        SELECT COUNT(*) AS UnreadCount
+        FROM Notifications
+        WHERE UserId = @UserId AND IsRead = 0;
+      `);
+
+        const count = result.recordset[0].UnreadCount;
+        return res.status(200).json({ unreadCount: count });
+    } catch (err) {
+        console.error('Get unread notifications count error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+/* ========== CHAT MESSAGES (ChatMessages table) ========== */
+
+// Get all messages between two users (1-to-1)
+app.get('/api/chat/messages', async (req, res) => {
+    const user1 = parseInt(req.query.user1, 10);
+    const user2 = parseInt(req.query.user2, 10);
+
+    if (!user1 || !user2) {
+        return res
+            .status(400)
+            .json({ message: 'user1 and user2 are required' });
+    }
+
+    try {
+        const pool = req.app.locals.db;
+
+        const result = await pool
+            .request()
+            .input('User1', sql.Int, user1)
+            .input('User2', sql.Int, user2)
+            .query(`
+        SELECT
+          MessageId,
+          SenderId,
+          ReceiverId,
+          Content,
+          Timestamp,
+          IsRead
         FROM ChatMessages
-        WHERE (SenderId = @UserId AND ReceiverId = @OtherUserId)
-           OR (SenderId = @OtherUserId AND ReceiverId = @UserId)
+        WHERE
+          (SenderId = @User1 AND ReceiverId = @User2)
+          OR
+          (SenderId = @User2 AND ReceiverId = @User1)
         ORDER BY Timestamp ASC;
       `);
 
@@ -479,116 +666,185 @@ app.get('/api/chat/:userId/:otherUserId', async (req, res) => {
     }
 });
 
-// CHAT: SEND MESSAGE
-app.post('/api/chat/send', async (req, res) => {
+// Send a new chat message + create notification
+app.post('/api/chat/messages', async (req, res) => {
     const { senderId, receiverId, content } = req.body;
+
     if (!senderId || !receiverId || !content) {
-        return res.status(400).json({ message: 'Missing fields' });
+        return res.status(400).json({
+            message: 'senderId, receiverId, content required',
+        });
     }
 
     try {
         const pool = req.app.locals.db;
-        await pool
+
+        // 1) Insert chat message
+        const msgResult = await pool
             .request()
             .input('SenderId', sql.Int, senderId)
             .input('ReceiverId', sql.Int, receiverId)
             .input('Content', sql.NVarChar(2000), content)
             .query(`
         INSERT INTO ChatMessages (SenderId, ReceiverId, Content)
+        OUTPUT INSERTED.MessageId, INSERTED.SenderId, INSERTED.ReceiverId,
+               INSERTED.Content, INSERTED.Timestamp, INSERTED.IsRead
         VALUES (@SenderId, @ReceiverId, @Content);
       `);
 
-        return res.status(201).json({ message: 'Message sent' });
-    } catch (err) {
-        console.error('Send chat message error:', err);
-        return res.status(500).json({ message: 'Server error' });
-    }
-});
+        const chatRow = msgResult.recordset[0];
 
-// EVENTS: GET
-app.get('/api/events', async (req, res) => {
-    try {
-        const pool = req.app.locals.db;
-        const result = await pool.request().query(`
-      SELECT EventId, Title, Description, EventDate, EventTime,
-             Location, ImageUrl, Organizer, Attendees, CreatedAt
-      FROM Events
-      ORDER BY EventDate, EventTime;
-    `);
-        return res.status(200).json({ events: result.recordset });
-    } catch (err) {
-        console.error('Get events error:', err);
-        return res.status(500).json({ message: 'Server error' });
-    }
-});
+        // 2) Get sender's display info
+        const userResult = await pool
+            .request()
+            .input('SenderId', sql.Int, senderId)
+            .query(`
+        SELECT FullName, ProfileImageUrl
+        FROM Users
+        WHERE UserId = @SenderId;
+      `);
 
-// EVENTS: CREATE
-app.post('/api/events', async (req, res) => {
-    const {
-        title,
-        description,
-        eventDate,
-        eventTime,
-        location,
-        imageUrl,
-        organizer,
-    } = req.body;
+        const sender = userResult.recordset[0];
 
-    if (
-        !title ||
-        !description ||
-        !eventDate ||
-        !eventTime ||
-        !location ||
-        !organizer
-    ) {
-        return res.status(400).json({ message: 'Missing fields' });
-    }
+        const senderName = sender ? sender.FullName : 'Unknown';
+        const senderImage = sender ? sender.ProfileImageUrl : null;
 
-    try {
-        const pool = req.app.locals.db;
+        // 3) Insert notification for receiver
         await pool
             .request()
-            .input('Title', sql.NVarChar(150), title)
-            .input('Description', sql.NVarChar(1000), description)
-            .input('EventDate', sql.Date, eventDate)
-            .input('EventTime', sql.Time, eventTime)
-            .input('Location', sql.NVarChar(200), location)
-            .input('ImageUrl', sql.NVarChar(300), imageUrl || null)
-            .input('Organizer', sql.NVarChar(100), organizer)
+            .input('UserId', sql.Int, receiverId)
+            .input('Type', sql.NVarChar(20), 'message')
+            .input('Title', sql.NVarChar(150), senderName)
+            .input('Body', sql.NVarChar(500), content.substring(0, 120))
+            .input('SenderId', sql.Int, senderId)
+            .input('SenderName', sql.NVarChar(100), senderName)
+            .input('SenderImage', sql.NVarChar(300), senderImage)
             .query(`
-        INSERT INTO Events (
-          Title, Description, EventDate, EventTime,
-          Location, ImageUrl, Organizer
+        INSERT INTO Notifications (
+          UserId, Type, Title, Body,
+          SenderId, SenderName, SenderImage
         )
         VALUES (
-          @Title, @Description, @EventDate, @EventTime,
-          @Location, @ImageUrl, @Organizer
+          @UserId, @Type, @Title, @Body,
+          @SenderId, @SenderName, @SenderImage
         );
       `);
 
-        return res.status(201).json({ message: 'Event created' });
+        return res.status(201).json({
+            message: 'Message sent',
+            chatMessage: chatRow,
+        });
     } catch (err) {
-        console.error('Create event error:', err);
+        console.error('Create chat message error:', err);
         return res.status(500).json({ message: 'Server error' });
     }
 });
 
-// CLUBS: GET
-app.get('/api/clubs', async (req, res) => {
+
+
+// Search users (for starting new chat)
+app.get('/api/users/search', async (req, res) => {
+    const q = (req.query.q || '').trim();
+    if (!q) {
+        return res.status(400).json({ message: 'q (query) is required' });
+    }
+
     try {
         const pool = req.app.locals.db;
-        const result = await pool.request().query(`
-      SELECT ClubId, Name, Category, Members, ImageUrl
-      FROM Clubs
-      ORDER BY Name;
-    `);
-        return res.status(200).json({ clubs: result.recordset });
+        const result = await pool
+            .request()
+            .input('Q', sql.NVarChar(150), `%${q}%`)
+            .query(`
+        SELECT TOP 20
+          UserId,
+          FullName,
+          UniversityEmail,
+          ProfileImageUrl
+        FROM Users
+        WHERE FullName LIKE @Q
+           OR UniversityEmail LIKE @Q
+        ORDER BY FullName ASC;
+      `);
+
+        return res.status(200).json({ users: result.recordset });
     } catch (err) {
-        console.error('Get clubs error:', err);
+        console.error('User search error:', err);
         return res.status(500).json({ message: 'Server error' });
     }
 });
+
+
+
+
+app.get('/api/users/search', async (req, res) => {
+    const q = (req.query.q || '').trim();
+    if (!q) {
+        return res.status(400).json({ message: 'q (query) is required' });
+    }
+
+    try {
+        const pool = req.app.locals.db;
+        const result = await pool
+            .request()
+            .input('Q', sql.NVarChar(150), `%${q}%`)
+            .query(`
+        SELECT TOP 20
+          UserId,
+          FullName,
+          UniversityEmail,
+          ProfileImageUrl
+        FROM Users
+        WHERE FullName LIKE @Q
+           OR UniversityEmail LIKE @Q
+        ORDER BY FullName ASC;
+      `);
+
+        return res.status(200).json({ users: result.recordset });
+    } catch (err) {
+        console.error('User search error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+/* ========== CHAT CONVERSATIONS (for chat list) ========== */
+
+app.get('/api/chat/conversations', async (req, res) => {
+    const userId = parseInt(req.query.userId, 10);
+
+    if (!userId) {
+        return res.status(400).json({ message: 'userId is required' });
+    }
+
+    try {
+        const pool = req.app.locals.db;
+
+        const result = await pool
+            .request()
+            .input('UserId', sql.Int, userId)
+            .query(`
+        SELECT TOP 50
+          u.UserId   AS OtherUserId,
+          u.FullName AS OtherUserName,
+          u.ProfileImageUrl,
+          cm.Content AS LastMessage,
+          cm.Timestamp AS LastMessageTime,
+          0 AS UnreadCount
+        FROM ChatMessages cm
+        JOIN Users u
+          ON (cm.SenderId = u.UserId AND cm.ReceiverId = @UserId)
+          OR (cm.ReceiverId = u.UserId AND cm.SenderId = @UserId)
+        WHERE u.UserId <> @UserId
+        ORDER BY cm.Timestamp DESC;
+      `);
+
+        return res.status(200).json({ conversations: result.recordset });
+    } catch (err) {
+        console.error('Get conversations error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+/* ========== START SERVER ========== */
 
 app.listen(port, () => {
     console.log(`UniLink backend running on port ${port}`);

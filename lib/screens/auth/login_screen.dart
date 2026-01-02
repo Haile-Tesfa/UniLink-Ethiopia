@@ -1,11 +1,13 @@
+// lib/screens/auth/login_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+
+import '../../utils/colors.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/app_logo.dart';
-import '../../utils/colors.dart';
-import '../auth/forgot_password_screen.dart';
+import '../home/home_shell.dart'; // <-- changed import
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,18 +17,11 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
-  bool _rememberMe = false;
   bool _obscurePassword = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _emailController.text = '';
-  }
 
   @override
   void dispose() {
@@ -38,15 +33,11 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      final uri = Uri.parse('http://localhost:5000/api/auth/login');
-
-      final response = await http.post(
-        uri,
+      final res = await http.post(
+        Uri.parse('http://localhost:5000/api/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'email': _emailController.text.trim(),
@@ -54,12 +45,25 @@ class _LoginScreenState extends State<LoginScreen> {
         }),
       );
 
-      if (response.statusCode == 200) {
-        Navigator.pushReplacementNamed(context, '/home');
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final user = data['user'] as Map<String, dynamic>;
+
+        // Navigate to HomeShell and pass real user data
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomeShell(
+              currentUserId: user['id'] as int,
+              fullName: user['name'] as String,
+              email: user['email'] as String,
+            ),
+          ),
+        );
       } else {
         String msg = 'Login failed';
         try {
-          final body = jsonDecode(response.body);
+          final body = jsonDecode(res.body);
           msg = body['message'] ?? msg;
         } catch (_) {}
         ScaffoldMessenger.of(context).showSnackBar(
@@ -71,83 +75,12 @@ class _LoginScreenState extends State<LoginScreen> {
         const SnackBar(content: Text('Cannot connect to server')),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _togglePasswordVisibility() {
-    setState(() {
-      _obscurePassword = !_obscurePassword;
-    });
-  }
-
-  void _onForgotPassword() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
-    );
-  }
-
-  Future<void> _onGoogleLogin() async {
-    try {
-      const fakeIdToken = 'FAKE_GOOGLE_ID_TOKEN';
-      final uri = Uri.parse('http://localhost:5000/api/auth/google');
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'idToken': fakeIdToken}),
-      );
-
-      if (response.statusCode == 200) {
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        String msg = 'Google login failed';
-        try {
-          final body = jsonDecode(response.body);
-          msg = body['message'] ?? msg;
-        } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot connect to server')),
-      );
-    }
-  }
-
-  Future<void> _onFacebookLogin() async {
-    try {
-      const fakeAccessToken = 'FAKE_FACEBOOK_ACCESS_TOKEN';
-      final uri = Uri.parse('http://localhost:5000/api/auth/facebook');
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'accessToken': fakeAccessToken}),
-      );
-
-      if (response.statusCode == 200) {
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        String msg = 'Facebook login failed';
-        try {
-          final body = jsonDecode(response.body);
-          msg = body['message'] ?? msg;
-        } catch (_) {}
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot connect to server')),
-      );
-    }
+    setState(() => _obscurePassword = !_obscurePassword);
   }
 
   @override
@@ -171,10 +104,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Form(
                   key: _formKey,
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const SizedBox(height: 40),
-                      const AppLogo(size: 120),
+                      const AppLogo(size: 100),
                       const SizedBox(height: 10),
                       const Text(
                         'Welcome Back',
@@ -184,14 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           color: AppColors.primary,
                         ),
                       ),
-                      const SizedBox(height: 5),
-                      const Text(
-                        'Sign in to continue to UniLink',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 30),
                       CustomTextField(
                         controller: _emailController,
                         label: 'University Email',
@@ -199,10 +124,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         keyboardType: TextInputType.emailAddress,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter your email';
+                            return 'Please enter email';
                           }
-                          if (!value.contains('@') || !value.contains('.')) {
-                            return 'Please enter a valid email';
+                          if (!value.contains('@')) {
+                            return 'Please enter valid email';
                           }
                           return null;
                         },
@@ -225,93 +150,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (value == null || value.isEmpty) {
                             return 'Please enter password';
                           }
-                          if (value.length < 6) {
-                            return 'Password must be at least 6 characters';
-                          }
                           return null;
                         },
                       ),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: _rememberMe,
-                                onChanged: (value) {
-                                  setState(() {
-                                    _rememberMe = value!;
-                                  });
-                                },
-                                activeColor: AppColors.primary,
-                              ),
-                              const Text(
-                                'Remember me',
-                                style: TextStyle(fontSize: 14),
-                              ),
-                            ],
-                          ),
-                          TextButton(
-                            onPressed: _onForgotPassword,
-                            child: const Text(
-                              'Forgot Password?',
-                              style: TextStyle(
-                                color: AppColors.primary,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 30),
                       CustomButton(
-                        text: 'Login',
+                        text: 'Sign In',
                         onPressed: _login,
                         isLoading: _isLoading,
                       ),
-                      const SizedBox(height: 25),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Divider(
-                              color: Colors.grey[400],
-                            ),
-                          ),
-                          Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 15),
-                            child: Text(
-                              'or continue with',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Divider(
-                              color: Colors.grey[400],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 25),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _SocialButton(
-                            icon: Icons.g_mobiledata,
-                            onPressed: _onGoogleLogin,
-                          ),
-                          const SizedBox(width: 20),
-                          _SocialButton(
-                            icon: Icons.facebook,
-                            onPressed: _onFacebookLogin,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 30),
+                      const SizedBox(height: 20),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -323,7 +171,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           TextButton(
                             onPressed: () {
-                              Navigator.pushNamed(context, '/signup');
+                              Navigator.pushReplacementNamed(
+                                  context, '/signup');
                             },
                             child: const Text(
                               'Sign Up',
@@ -334,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ],
-                      ),
+                      )
                     ],
                   ),
                 ),
@@ -342,40 +191,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SocialButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  const _SocialButton({
-    required this.icon,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 60,
-      height: 60,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: IconButton(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 30, color: AppColors.primary),
       ),
     );
   }

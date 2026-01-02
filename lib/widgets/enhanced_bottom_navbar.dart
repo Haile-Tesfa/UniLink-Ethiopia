@@ -51,7 +51,6 @@ class EnhancedBottomNavBar extends StatelessWidget {
                 isActive: currentIndex == 1,
                 onTap: () => onTap(1),
               ),
-              const SizedBox(width: 60),
               _NavItem(
                 icon: Icons.chat,
                 label: 'Chat',
@@ -59,10 +58,16 @@ class EnhancedBottomNavBar extends StatelessWidget {
                 onTap: () => onTap(2),
               ),
               _NavItem(
-                icon: Icons.person,
-                label: 'Profile',
+                icon: Icons.notifications,
+                label: 'Notify',
                 isActive: currentIndex == 3,
                 onTap: () => onTap(3),
+              ),
+              _NavItem(
+                icon: Icons.person,
+                label: 'Profile',
+                isActive: currentIndex == 4,
+                onTap: () => onTap(4),
               ),
             ],
           ),
@@ -124,9 +129,8 @@ class _NavItem extends StatelessWidget {
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: isActive
-                  ? AppColors.primary.withOpacity(0.1)
-                  : Colors.transparent,
+              color:
+                  isActive ? AppColors.primary.withOpacity(0.1) : Colors.transparent,
               shape: BoxShape.circle,
             ),
             child: Icon(

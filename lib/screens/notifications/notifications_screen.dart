@@ -1,100 +1,102 @@
+// lib/screens/notifications/notifications_screen.dart
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import '../../models/notification_model.dart';
 import '../../utils/colors.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  final int currentUserId;
+
+  const NotificationsScreen({super.key, required this.currentUserId});
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  final List<NotificationModel> _notifications = [
-    NotificationModel(
-      id: '1',
-      type: 'like',
-      title: 'Meklit Desalegn',
-      body: 'liked your post',
-      senderId: '1',
-      senderName: 'Meklit Desalegn',
-      senderImage: 'assets/images/profile/prof_1.jpg',
-      postId: '1',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 10)),
-      isRead: false,
-    ),
-    NotificationModel(
-      id: '2',
-      type: 'comment',
-      title: 'Abebe Kebede',
-      body: 'commented on your post: "Great work!"',
-      senderId: '2',
-      senderName: 'Abebe Kebede',
-      senderImage: 'assets/images/profile/prof_2.jpg',
-      postId: '1',
-      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      isRead: false,
-    ),
-    NotificationModel(
-      id: '3',
-      type: 'follow',
-      title: 'Sara Tesfaye',
-      body: 'started following you',
-      senderId: '3',
-      senderName: 'Sara Tesfaye',
-      senderImage: 'assets/images/profile/prof_3.jpg',
-      timestamp: DateTime.now().subtract(const Duration(days: 1)),
-      isRead: true,
-    ),
-    NotificationModel(
-      id: '4',
-      type: 'marketplace',
-      title: 'Marketplace',
-      body: 'Your item "Textbooks Bundle" has a new offer',
-      itemId: '2',
-      timestamp: DateTime.now().subtract(const Duration(days: 2)),
-      isRead: true,
-    ),
-  ];
+  static const String _baseUrl = 'http://localhost:5000';
 
-  void _markAllAsRead() {
-    setState(() {
-      for (var notification in _notifications) {
-        notification = NotificationModel(
-          id: notification.id,
-          type: notification.type,
-          title: notification.title,
-          body: notification.body,
-          senderId: notification.senderId,
-          senderName: notification.senderName,
-          senderImage: notification.senderImage,
-          postId: notification.postId,
-          itemId: notification.itemId,
-          timestamp: notification.timestamp,
-          isRead: true,
-        );
-      }
-    });
+  bool _isLoading = false;
+  List<NotificationModel> _notifications = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
   }
 
-  void _clearAll() {
-    showDialog(
+  Future<void> _loadNotifications() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final uri = Uri.parse(
+        '$_baseUrl/api/notifications?userId=${widget.currentUserId}',
+      );
+      final res = await http.get(uri);
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final list = data['notifications'] as List<dynamic>? ?? [];
+
+        setState(() {
+          _notifications = list
+              .map((e) => NotificationModel.fromJson(
+                  e as Map<String, dynamic>))
+              .toList()
+            ..sort(
+              (a, b) => b.timestamp.compareTo(a.timestamp),
+            );
+        });
+      } else {
+        debugPrint(
+          'Failed to load notifications: ${res.statusCode} ${res.body}',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error loading notifications: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _markAllAsRead() async {
+    // optimistic UI update
+    setState(() {
+      _notifications = _notifications
+          .map((n) => n.copyWith(isRead: true))
+          .toList();
+    });
+
+    try {
+      final uri = Uri.parse('$_baseUrl/api/notifications/mark-all-read');
+      await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'userId': widget.currentUserId}),
+      );
+    } catch (e) {
+      debugPrint('Error marking all notifications as read: $e');
+    }
+  }
+
+  Future<void> _clearAll() async {
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear All Notifications'),
-        content: const Text('Are you sure you want to clear all notifications?'),
+        content: const Text(
+          'Are you sure you want to clear all notifications?',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              setState(() {
-                _notifications.clear();
-              });
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context, true),
             child: const Text(
               'Clear All',
               style: TextStyle(color: Colors.red),
@@ -103,10 +105,30 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ],
       ),
     );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _notifications.clear();
+    });
+
+    try {
+      final uri = Uri.parse('$_baseUrl/api/notifications/clear-all');
+      await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'userId': widget.currentUserId}),
+      );
+    } catch (e) {
+      debugPrint('Error clearing notifications: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final unreadCount =
+        _notifications.where((n) => !n.isRead).length;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifications'),
@@ -121,83 +143,109 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
         ],
       ),
-      body: _notifications.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.notifications_none, size: 80, color: Colors.grey),
-                  SizedBox(height: 20),
-                  Text(
-                    'No notifications',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  Text(
-                    'When you get notifications, they\'ll appear here',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _notifications.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      Icon(Icons.notifications_none,
+                          size: 80, color: Colors.grey),
+                      SizedBox(height: 20),
                       Text(
-                        '${_notifications.where((n) => !n.isRead).length} Unread',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
+                        'No notifications',
+                        style: TextStyle(
+                            fontSize: 18, color: Colors.grey),
                       ),
-                      TextButton(
-                        onPressed: _clearAll,
-                        child: const Text(
-                          'Clear All',
-                          style: TextStyle(color: Colors.red),
-                        ),
+                      Text(
+                        'When you get notifications, they\'ll appear here',
+                        style: TextStyle(color: Colors.grey),
                       ),
                     ],
                   ),
+                )
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '$unreadCount Unread',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _clearAll,
+                            child: const Text(
+                              'Clear All',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: _loadNotifications,
+                        child: ListView.builder(
+                          itemCount: _notifications.length,
+                          itemBuilder: (context, index) {
+                            final notification =
+                                _notifications[index];
+                            return _NotificationItem(
+                              notification: notification,
+                              onTap: () {
+                                // mark single as read in UI
+                                setState(() {
+                                  _notifications[index] =
+                                      notification.copyWith(
+                                          isRead: true);
+                                });
+                                // TODO: optionally send POST /notifications/mark-read
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _notifications.length,
-                    itemBuilder: (context, index) {
-                      final notification = _notifications[index];
-                      return _NotificationItem(notification: notification);
-                    },
-                  ),
-                ),
-              ],
-            ),
     );
   }
 }
 
 class _NotificationItem extends StatelessWidget {
   final NotificationModel notification;
+  final VoidCallback onTap;
 
   const _NotificationItem({
     required this.notification,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: notification.isRead ? Colors.white : AppColors.primary.withOpacity(0.05),
+        color: notification.isRead
+            ? Colors.white
+            : AppColors.primary.withOpacity(0.05),
         border: Border(
           bottom: BorderSide(color: Colors.grey.shade200),
         ),
       ),
       child: ListTile(
-        leading: notification.senderImage != null
+        leading: notification.senderImage != null &&
+                notification.senderImage!.isNotEmpty
             ? CircleAvatar(
-                backgroundImage: AssetImage(notification.senderImage!),
+                backgroundImage:
+                    NetworkImage(notification.senderImage!),
               )
             : Container(
                 width: 40,
@@ -214,7 +262,9 @@ class _NotificationItem extends StatelessWidget {
         title: Text(
           notification.title,
           style: TextStyle(
-            fontWeight: notification.isRead ? FontWeight.normal : FontWeight.bold,
+            fontWeight: notification.isRead
+                ? FontWeight.normal
+                : FontWeight.bold,
           ),
         ),
         subtitle: Text(notification.body),
@@ -223,7 +273,8 @@ class _NotificationItem extends StatelessWidget {
           children: [
             Text(
               _formatTime(notification.timestamp),
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: const TextStyle(
+                  fontSize: 12, color: Colors.grey),
             ),
             if (!notification.isRead)
               Container(
@@ -237,9 +288,7 @@ class _NotificationItem extends StatelessWidget {
               ),
           ],
         ),
-        onTap: () {
-          // Handle notification tap
-        },
+        onTap: onTap,
       ),
     );
   }
@@ -247,7 +296,7 @@ class _NotificationItem extends StatelessWidget {
   String _formatTime(DateTime timestamp) {
     final now = DateTime.now();
     final difference = now.difference(timestamp);
-    
+
     if (difference.inSeconds < 60) {
       return 'Just now';
     } else if (difference.inMinutes < 60) {
