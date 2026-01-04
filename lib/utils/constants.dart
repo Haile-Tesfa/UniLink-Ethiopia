@@ -3,13 +3,20 @@ class AppConstants {
   static const String appTagline = 'Connect. Share. Grow.';
   static const String version = '1.0.0';
   
-  // API Endpoints (Placeholders)
-  static const String apiBaseUrl = 'https://api.unilink.edu.et';
-  static const String loginEndpoint = '/auth/login';
-  static const String signupEndpoint = '/auth/signup';
-  static const String postsEndpoint = '/posts';
-  static const String marketplaceEndpoint = '/marketplace';
-  static const String eventsEndpoint = '/events';
+  // API Configuration
+  // IMPORTANT: Change this to your server's IP address or domain for deployment
+  // For local development: 'http://10.0.2.2:5000' (Android Emulator)
+  // For local development: 'http://localhost:5000' (iOS Simulator / Web)
+  // For deployment: 'http://YOUR_SERVER_IP:5000' or 'https://yourdomain.com'
+  // Example: 'http://192.168.1.100:5000' (replace with your computer's local IP)
+  static const String apiBaseUrl = 'http://localhost:5000';
+  
+  // API Endpoints
+  static const String loginEndpoint = '/api/auth/login';
+  static const String signupEndpoint = '/api/auth/signup';
+  static const String postsEndpoint = '/api/posts';
+  static const String marketplaceEndpoint = '/api/marketplace';
+  static const String eventsEndpoint = '/api/events';
   
   // App Settings
   static const int postsPerPage = 10;

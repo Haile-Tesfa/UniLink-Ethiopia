@@ -5,6 +5,7 @@ import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/app_logo.dart';
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -44,9 +45,8 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     try {
-      // Chrome / Windows → use localhost
       final response = await http.post(
-        Uri.parse('http://localhost:5000/api/auth/signup'),
+        Uri.parse('${AppConstants.apiBaseUrl}${AppConstants.signupEndpoint}'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'fullName': _nameController.text.trim(),
@@ -63,21 +63,25 @@ class _SignupScreenState extends State<SignupScreen> {
       // print('BODY: ${response.body}');
 
       if (response.statusCode == 201) {
-  Navigator.pushReplacementNamed(context, '/login');
-}
- else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account created successfully!')),
+        );
+        Navigator.pushReplacementNamed(context, '/login');
+      } else {
         String msg = 'Signup failed';
         try {
-          final body = jsonDecode(response.body);
-          msg = body['message'] ?? msg;
-        } catch (_) {}
+          final body = jsonDecode(response.body) as Map<String, dynamic>;
+          msg = body['message'] as String? ?? msg;
+        } catch (e) {
+          msg = 'Signup failed: ${response.statusCode}';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg)),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot connect to server')),
+        SnackBar(content: Text('Cannot connect to server: $e')),
       );
     } finally {
       if (mounted) {

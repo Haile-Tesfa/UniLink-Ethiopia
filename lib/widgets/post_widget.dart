@@ -187,10 +187,56 @@ class PostWidget extends StatelessWidget {
           ? Image.network(
               url,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  height: 250,
+                  width: double.infinity,
+                  color: Colors.grey[300],
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text('Failed to load image', style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                );
+              },
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Container(
+                  height: 250,
+                  width: double.infinity,
+                  color: Colors.grey[200],
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  ),
+                );
+              },
             )
           : Image.asset(
               url,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  height: 250,
+                  width: double.infinity,
+                  color: Colors.grey[300],
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                      SizedBox(height: 8),
+                      Text('Image not found', style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                );
+              },
             ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/app_logo.dart';
@@ -37,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final res = await http.post(
-        Uri.parse('http://localhost:5000/api/auth/login'),
+        Uri.parse('${AppConstants.apiBaseUrl}${AppConstants.loginEndpoint}'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'email': _emailController.text.trim(),
@@ -49,30 +50,42 @@ class _LoginScreenState extends State<LoginScreen> {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final user = data['user'] as Map<String, dynamic>;
 
+        // Get user ID - handle both string and int
+        int userId;
+        try {
+          final idStr = user['id'].toString();
+          // Try to parse as int, if it's a MongoDB ObjectId string, use hash
+          userId = int.tryParse(idStr) ?? idStr.hashCode;
+        } catch (e) {
+          userId = user['id'].toString().hashCode;
+        }
+
         // Navigate to HomeShell and pass real user data
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => HomeShell(
-              currentUserId: user['id'] as int,
-              fullName: user['name'] as String,
-              email: user['email'] as String,
+              currentUserId: userId,
+              fullName: user['name'] as String? ?? '',
+              email: user['email'] as String? ?? '',
             ),
           ),
         );
       } else {
         String msg = 'Login failed';
         try {
-          final body = jsonDecode(res.body);
-          msg = body['message'] ?? msg;
-        } catch (_) {}
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          msg = body['message'] as String? ?? msg;
+        } catch (e) {
+          msg = 'Login failed: ${res.statusCode}';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg)),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot connect to server')),
+        SnackBar(content: Text('Cannot connect to server: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);

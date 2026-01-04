@@ -7,6 +7,7 @@ import '../../widgets/enhanced_bottom_navbar.dart';
 import '../../widgets/marketplace_item_card.dart';
 import '../../models/marketplace_model.dart';
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 import '../home/home_feed.dart';
 import '../chat/chat_screen.dart';
 
@@ -38,7 +39,7 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
 
   int get _currentUserId => widget.currentUserId;
 
-  static const String _baseUrl = 'http://127.0.0.1:5000';
+  // Using centralized API URL from constants
 
   @override
   void initState() {
@@ -52,7 +53,7 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
     });
 
     try {
-      final uri = Uri.parse('$_baseUrl/api/marketplace/items');
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/marketplace/items');
       final response = await http.get(uri);
 
       if (response.statusCode == 200) {
@@ -62,18 +63,36 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
         setState(() {
           _items = itemsJson
               .map(
-                (json) =>
-                    MarketplaceItem.fromJson(json as Map<String, dynamic>),
+                (json) {
+                  final itemJson = Map<String, dynamic>.from(json as Map<String, dynamic>);
+                  // Fix ImageUrl if it's a relative path
+                  final imageUrlValue = itemJson['ImageUrl'];
+                  if (imageUrlValue != null && imageUrlValue.toString().isNotEmpty) {
+                    final imageUrl = imageUrlValue.toString();
+                    if (!imageUrl.startsWith('http://') &&
+                        !imageUrl.startsWith('https://') &&
+                        !imageUrl.startsWith('assets/')) {
+                      // If it starts with /, use as-is, otherwise add /
+                      final fullUrl = imageUrl.startsWith('/')
+                          ? '${AppConstants.apiBaseUrl}$imageUrl'
+                          : '${AppConstants.apiBaseUrl}/$imageUrl';
+                      itemJson['ImageUrl'] = fullUrl;
+                    }
+                  }
+                  return MarketplaceItem.fromJson(itemJson);
+                },
               )
               .toList();
           _isLoading = false;
         });
       } else {
+        debugPrint('Marketplace items failed: ${response.statusCode} - ${response.body}');
         setState(() {
           _isLoading = false;
         });
       }
     } catch (e) {
+      debugPrint('Marketplace items error: $e');
       setState(() {
         _isLoading = false;
       });
@@ -294,12 +313,43 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Image.asset(
-                          item.imageUrl,
-                          height: 200,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        ),
+                        child: item.imageUrl.isNotEmpty && 
+                               (item.imageUrl.startsWith('http://') || item.imageUrl.startsWith('https://'))
+                            ? Image.network(
+                                item.imageUrl,
+                                height: 200,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    height: 200,
+                                    width: double.infinity,
+                                    color: Colors.grey[300],
+                                    child: const Icon(Icons.image_not_supported, size: 50),
+                                  );
+                                },
+                              )
+                            : item.imageUrl.isNotEmpty
+                                ? Image.asset(
+                                    item.imageUrl,
+                                    height: 200,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        height: 200,
+                                        width: double.infinity,
+                                        color: Colors.grey[300],
+                                        child: const Icon(Icons.image_not_supported, size: 50),
+                                      );
+                                    },
+                                  )
+                                : Container(
+                                    height: 200,
+                                    width: double.infinity,
+                                    color: Colors.grey[300],
+                                    child: const Icon(Icons.image_not_supported, size: 50),
+                                  ),
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -466,7 +516,7 @@ class _MarketplaceHomeState extends State<MarketplaceHome> {
 
                     try {
                       final uri =
-                          Uri.parse('$_baseUrl/api/messages');
+                          Uri.parse('${AppConstants.apiBaseUrl}/api/messages');
                       final body = jsonEncode({
                         'itemId': item.id,
                         'buyerId': _currentUserId,

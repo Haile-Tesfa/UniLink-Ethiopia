@@ -14,6 +14,7 @@ import '../../widgets/enhanced_bottom_navbar.dart';
 import '../../widgets/custom_floating_action_button.dart';
 import '../../widgets/story_circle.dart';
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 import '../chat/chat_screen.dart';
 
 class HomeFeed extends StatefulWidget {
@@ -26,8 +27,7 @@ class HomeFeed extends StatefulWidget {
 }
 
 class _HomeFeedState extends State<HomeFeed> {
-  // IMPORTANT: if you test Flutter web on another device, change this to your PC IP.
-  static const String _baseUrl = 'http://127.0.0.1:5000';
+  // Using centralized API URL from constants
 
   int _currentIndex = 0;
   bool _isLoading = false;
@@ -105,7 +105,7 @@ class _HomeFeedState extends State<HomeFeed> {
     });
 
     try {
-      final uri = Uri.parse('$_baseUrl/api/posts');
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/posts?userId=${widget.currentUserId}');
       debugPrint('GET $uri');
       final response = await http.get(uri);
 
@@ -119,20 +119,27 @@ class _HomeFeedState extends State<HomeFeed> {
 
           String? mediaUrl = row['MediaUrl'] as String?;
           if (mediaUrl != null && mediaUrl.isNotEmpty) {
-            mediaUrl = '$_baseUrl$mediaUrl';
+            // Ensure MediaUrl is a full URL
+            if (!mediaUrl.startsWith('http://') && !mediaUrl.startsWith('https://')) {
+              // If it doesn't start with /, add it
+              if (!mediaUrl.startsWith('/')) {
+                mediaUrl = '/$mediaUrl';
+              }
+              mediaUrl = '${AppConstants.apiBaseUrl}$mediaUrl';
+            }
           }
 
           return Post(
             id: row['PostId'].toString(),
             userId: row['UserId'].toString(),
-            userName: 'User ${row['UserId']}',
-            userAvatar: 'assets/images/profile/prof_1.jpg',
+            userName: (row['UserName'] ?? 'User ${row['UserId']}') as String,
+            userAvatar: (row['UserAvatar'] as String?) ?? 'assets/images/profile/prof_1.jpg',
             content: (row['Content'] ?? '') as String,
             imageUrl: mediaUrl,
-            likeCount: 0,
-            commentCount: 0,
+            likeCount: (row['LikeCount'] as int?) ?? 0,
+            commentCount: (row['CommentCount'] as int?) ?? 0,
             createdAt: DateTime.parse(row['CreatedAt'].toString()),
-            isLiked: false,
+            isLiked: (row['IsLiked'] as bool?) ?? false,
             isSaved: false,
           );
         }).toList();
@@ -164,26 +171,77 @@ class _HomeFeedState extends State<HomeFeed> {
     await _loadPosts();
   }
 
-  void _toggleLike(String postId) {
+  Future<void> _toggleLike(String postId) async {
+    final index = _posts.indexWhere((post) => post.id == postId);
+    if (index == -1) return;
+
+    final post = _posts[index];
+    final wasLiked = post.isLiked;
+    
+    // Optimistically update UI
     setState(() {
-      final index = _posts.indexWhere((post) => post.id == postId);
-      if (index != -1) {
-        final post = _posts[index];
-        _posts[index] = Post(
-          id: post.id,
-          userId: post.userId,
-          userName: post.userName,
-          userAvatar: post.userAvatar,
-          content: post.content,
-          imageUrl: post.imageUrl,
-          likeCount: post.isLiked ? post.likeCount - 1 : post.likeCount + 1,
-          commentCount: post.commentCount,
-          createdAt: post.createdAt,
-          isLiked: !post.isLiked,
-          isSaved: post.isSaved,
+      _posts[index] = Post(
+        id: post.id,
+        userId: post.userId,
+        userName: post.userName,
+        userAvatar: post.userAvatar,
+        content: post.content,
+        imageUrl: post.imageUrl,
+        likeCount: wasLiked ? post.likeCount - 1 : post.likeCount + 1,
+        commentCount: post.commentCount,
+        createdAt: post.createdAt,
+        isLiked: !wasLiked,
+        isSaved: post.isSaved,
+      );
+    });
+
+    // Call API
+    try {
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/posts/$postId/like');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': widget.currentUserId.toString(),
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        // Update with server response
+        setState(() {
+          _posts[index] = Post(
+            id: post.id,
+            userId: post.userId,
+            userName: post.userName,
+            userAvatar: post.userAvatar,
+            content: post.content,
+            imageUrl: post.imageUrl,
+            likeCount: data['likeCount'] as int? ?? post.likeCount,
+            commentCount: post.commentCount,
+            createdAt: post.createdAt,
+            isLiked: data['isLiked'] as bool? ?? !wasLiked,
+            isSaved: post.isSaved,
+          );
+        });
+      } else {
+        // Revert on error
+        setState(() {
+          _posts[index] = post;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update like')),
         );
       }
-    });
+    } catch (e) {
+      // Revert on error
+      setState(() {
+        _posts[index] = post;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot connect to server')),
+      );
+    }
   }
 
   void _toggleSave(String postId) {
@@ -407,11 +465,11 @@ class _HomeFeedState extends State<HomeFeed> {
                     if (text.isEmpty) return;
 
                     try {
-                      final uri = Uri.parse('$_baseUrl/api/comments');
+                      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/comments');
                       final body = jsonEncode({
-                        'postId': int.parse(post.id),
-                        'authorId': widget.currentUserId,
-                        'postOwnerId': int.parse(post.userId),
+                        'postId': post.id,
+                        'authorId': widget.currentUserId.toString(),
+                        'postOwnerId': post.userId,
                         'commentText': text,
                       });
 
@@ -428,6 +486,8 @@ class _HomeFeedState extends State<HomeFeed> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Comment saved.')),
                         );
+                        // Refresh posts to update comment count
+                        _refreshPosts();
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(

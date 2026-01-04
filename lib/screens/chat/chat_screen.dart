@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 import 'user_search_screen.dart'; 
 import '../../models/chat_message_model.dart';
 // make sure this file exists
@@ -61,8 +62,7 @@ class ChatSummary {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  static const String _baseUrl = 'http://localhost:5000';
-
+  // Using centralized API URL from constants
   bool _isLoading = false;
   List<ChatSummary> _chats = [];
 
@@ -77,7 +77,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       final uri = Uri.parse(
-          '$_baseUrl/api/chat/conversations?userId=${widget.currentUserId}');
+          '${AppConstants.apiBaseUrl}/api/chat/conversations?userId=${widget.currentUserId}');
       final res = await http.get(uri);
 
       if (res.statusCode == 200) {
@@ -340,8 +340,7 @@ class ChatDetailScreen extends StatefulWidget {
 }
 
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
-  static const String _baseUrl = 'http://localhost:5000';
-
+  // Using centralized API URL from constants
   final TextEditingController _messageController = TextEditingController();
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
@@ -357,7 +356,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     try {
       final uri = Uri.parse(
-        '$_baseUrl/api/chat/messages'
+        '${AppConstants.apiBaseUrl}/api/chat/messages'
         '?user1=${widget.currentUserId}&user2=${widget.otherUserId}',
       );
       final res = await http.get(uri);
@@ -405,7 +404,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
 
     try {
-      final uri = Uri.parse('$_baseUrl/api/chat/messages');
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/chat/messages');
       final body = jsonEncode({
         'senderId': widget.currentUserId,
         'receiverId': widget.otherUserId,

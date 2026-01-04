@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../../models/post_model.dart';
 import '../../widgets/post_widget.dart';
 import '../../widgets/profile_header.dart';
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -41,6 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   final List<Post> _savedPosts = [];
   bool _isLoading = false;
   bool _isFollowing = true;
+  bool _notificationEnabled = true;
 
   @override
   void initState() {
@@ -679,6 +683,66 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  Future<void> _toggleNotifications(bool value) async {
+    setState(() {
+      _notificationEnabled = value;
+    });
+
+    try {
+      // Get current user ID - you may need to pass this from parent or get from auth state
+      // For now, using a placeholder. In production, get this from shared preferences or auth state
+      const String userId = '1'; // TODO: Get actual userId from auth state/context
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/settings/notifications');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': userId,
+          'enabled': value,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        // Success
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Notifications ${value ? 'enabled' : 'disabled'}'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        // Revert on error
+        setState(() {
+          _notificationEnabled = !value;
+        });
+        if (mounted) {
+          final errorData = jsonDecode(response.body);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorData['message'] ?? 'Failed to update notification settings'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Revert on error
+      setState(() {
+        _notificationEnabled = !value;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _showSettings(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -691,8 +755,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                 leading: const Icon(Icons.notifications),
                 title: const Text('Notifications'),
                 trailing: Switch(
-                  value: true,
-                  onChanged: (value) {},
+                  value: _notificationEnabled,
+                  onChanged: (value) => _toggleNotifications(value),
                   activeColor: AppColors.primary,
                 ),
               ),

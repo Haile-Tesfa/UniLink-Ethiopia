@@ -11,6 +11,7 @@ import 'screens/events/events_home.dart';
 import 'screens/services/services_home.dart';
 import 'screens/events/event_details_screen.dart';
 import 'screens/events/create_event_screen.dart';
+import 'screens/notifications/notifications_screen.dart';
 
 class UniLinkApp extends StatelessWidget {
   const UniLinkApp({super.key});
@@ -40,9 +41,9 @@ class UniLinkApp extends StatelessWidget {
         // '/chat': (_) => ChatScreen(currentUserId: fakeUserId),
 
         '/search': (_) => const SearchScreen(),
-        '/create-post': (_) => const CreatePostScreen(),
+        '/create-post': (_) => const CreatePostScreen(userId: fakeUserId),
         '/events': (_) => const EventsHome(),
-        // IMPORTANT: removed '/notifications' route
+        '/notifications': (_) => const NotificationsScreen(currentUserId: fakeUserId),
         '/services': (_) => const ServicesHome(),
         '/event-details': (_) => const EventDetailsScreen(event: {}),
         '/create-event': (_) => const CreateEventScreen(),

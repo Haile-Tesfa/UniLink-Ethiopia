@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -30,7 +31,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final uri = Uri.parse('http://localhost:5000/api/auth/reset-password');
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/auth/reset-password');
       final response = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},

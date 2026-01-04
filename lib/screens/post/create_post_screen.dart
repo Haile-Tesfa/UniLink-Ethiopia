@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -7,9 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 
 class CreatePostScreen extends StatefulWidget {
-  const CreatePostScreen({super.key});
+  final int? userId;
+  
+  const CreatePostScreen({super.key, this.userId});
 
   @override
   State<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -25,7 +27,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   String? _attachedFileType; // 'image' or 'video'
   String? _uploadedMediaUrl; // URL from backend
 
-  static const String _baseUrl = 'http://127.0.0.1:5000';
+  // Using centralized API URL from constants
 
   Future<void> _pickAndUploadFile() async {
     try {
@@ -54,7 +56,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         SnackBar(content: Text('Uploading ${file.name} ...')),
       );
 
-      final uri = Uri.parse('$_baseUrl/api/uploads/post-media');
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/uploads/post-media');
       final request = http.MultipartRequest('POST', uri);
 
       if (kIsWeb) {
@@ -94,8 +96,20 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
+        String? fileUrl = data['fileUrl'] as String?;
+        // Ensure full URL if relative path
+        if (fileUrl != null && fileUrl.isNotEmpty) {
+          if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
+            // If it starts with /, prepend base URL, otherwise add / before it
+            if (fileUrl.startsWith('/')) {
+              fileUrl = '${AppConstants.apiBaseUrl}$fileUrl';
+            } else {
+              fileUrl = '${AppConstants.apiBaseUrl}/$fileUrl';
+            }
+          }
+        }
         setState(() {
-          _uploadedMediaUrl = data['fileUrl'] as String?;
+          _uploadedMediaUrl = fileUrl;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -131,8 +145,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     setState(() => _isLoading = true);
 
     try {
-      const int userId = 3;
-      final uri = Uri.parse('$_baseUrl/api/posts');
+      // Get userId from widget or use a default (you should pass this from context)
+      final int userId = widget.userId ?? 1;
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/posts');
 
       final body = {
         'userId': userId,

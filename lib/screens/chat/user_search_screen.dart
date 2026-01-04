@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../models/chat_message_model.dart';
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 import 'chat_screen.dart'; // for ChatDetailScreen import
 
 class UserSearchScreen extends StatefulWidget {
@@ -17,7 +18,7 @@ class UserSearchScreen extends StatefulWidget {
 }
 
 class _UserSearchScreenState extends State<UserSearchScreen> {
-  static const String _baseUrl = 'http://localhost:5000';
+  // Using centralized API URL from constants
 
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
@@ -30,7 +31,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final uri = Uri.parse('$_baseUrl/api/users/search?q=$q');
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/users/search?q=$q');
       final res = await http.get(uri);
 
       if (res.statusCode == 200) {

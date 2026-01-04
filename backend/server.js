@@ -1,26 +1,37 @@
 require('dotenv').config();
 const express = require('express');
-const sql = require('mssql');
+const { MongoClient, ObjectId } = require('mongodb');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 
-// OLD: const port = 5000;
-// NEW:
 const PORT = process.env.PORT || 5000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/unilink';
 
-const dbConfig = {
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    server: process.env.DB_SERVER,
-    database: process.env.DB_NAME,
-    options: {
-        encrypt: process.env.DB_ENCRYPT === 'true',
-        trustServerCertificate: process.env.DB_TRUST_CERT === 'true',
-    },
-};
+// MongoDB connection
+let db;
+let client;
+let isMongoConnected = false;
+
+MongoClient.connect(MONGODB_URI)
+    .then((mongoClient) => {
+        client = mongoClient;
+        db = mongoClient.db();
+        isMongoConnected = true;
+        console.log('✅ Connected to MongoDB');
+        console.log(`📊 Database: ${db.databaseName}`);
+        app.locals.db = db;
+    })
+    .catch((err) => {
+        console.error('❌ MongoDB connection error:', err.message);
+        console.error('💡 Make sure MongoDB is running or use MongoDB Atlas');
+        console.error('💡 For local MongoDB: Install MongoDB Compass or MongoDB Server');
+        console.error('💡 For cloud: Use MongoDB Atlas connection string');
+        isMongoConnected = false;
+    });
 
 app.use(cors());
 app.use(express.json());
@@ -42,21 +53,31 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// ====== DB CONNECT ======
-sql
-    .connect(dbConfig)
-    .then((pool) => {
-        console.log('Connected to SQL Server');
-        app.locals.db = pool;
-    })
-    .catch((err) => {
-        console.error('SQL connection error:', err);
-    });
+// Helper function to hash password
+function hashPassword(password) {
+    return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+// Helper function to check MongoDB connection
+function checkMongoConnection(req, res) {
+    if (!isMongoConnected || !req.app.locals.db) {
+        return res.status(503).json({ 
+            message: 'Database not connected. Please check MongoDB connection.' 
+        });
+    }
+    return null; // Connection OK
+}
 
 /* ========== AUTH ROUTES ========== */
 
 // SIGNUP
 app.post('/api/auth/signup', async (req, res) => {
+    if (!isMongoConnected) {
+        return res.status(503).json({ 
+            message: 'Database not connected. Please check MongoDB connection.' 
+        });
+    }
+
     const { fullName, email, studentId, department, yearOfStudy, password } =
         req.body;
 
@@ -91,60 +112,65 @@ app.post('/api/auth/signup', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ 
+                message: 'Database not connected. Please check MongoDB connection.' 
+            });
+        }
 
-        const dupCheck = await pool
-            .request()
-            .input('Email', sql.NVarChar(150), email)
-            .input('StudentId', sql.NVarChar(50), studentId)
-            .query(`
-        SELECT 1 AS ExistsFlag
-        FROM Users
-        WHERE UniversityEmail = @Email OR StudentId = @StudentId
-      `);
+        const usersCollection = db.collection('users');
 
-        if (dupCheck.recordset.length > 0) {
+        // Check for duplicates
+        const existingUser = await usersCollection.findOne({
+            $or: [
+                { universityEmail: email },
+                { studentId: studentId }
+            ]
+        });
+
+        if (existingUser) {
             return res
                 .status(409)
                 .json({ message: 'Email or Student ID already registered' });
         }
 
-        await pool
-            .request()
-            .input('FullName', sql.NVarChar(100), fullName)
-            .input('Email', sql.NVarChar(150), email)
-            .input('StudentId', sql.NVarChar(50), studentId)
-            .input('Department', sql.NVarChar(100), department)
-            .input('YearOfStudy', sql.Int, yearOfStudy)
-            .input('Password', sql.NVarChar(256), password)
-            .query(`
-        INSERT INTO Users (
-          FullName,
-          UniversityEmail,
-          StudentId,
-          Department,
-          YearOfStudy,
-          PasswordHash
-        )
-        VALUES (
-          @FullName,
-          @Email,
-          @StudentId,
-          @Department,
-          @YearOfStudy,
-          HASHBYTES('SHA2_256', @Password)
-        );
-      `);
+        // Insert new user
+        const newUser = {
+            fullName: fullName,
+            universityEmail: email,
+            studentId: studentId,
+            department: department,
+            yearOfStudy: parseInt(yearOfStudy) || 1,
+            passwordHash: hashPassword(password),
+            createdAt: new Date(),
+            profileImageUrl: null
+        };
 
-        return res.status(201).json({ message: 'Account created successfully' });
+        const result = await usersCollection.insertOne(newUser);
+
+        if (result.insertedId) {
+            return res.status(201).json({ message: 'Account created successfully' });
+        } else {
+            return res.status(500).json({ message: 'Failed to create account' });
+        }
     } catch (err) {
         console.error('Signup error:', err);
-        return res.status(500).json({ message: 'Server error' });
+        return res.status(500).json({ 
+            message: 'Server error: ' + (err.message || 'Unknown error'),
+            error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
     }
 });
 
 // LOGIN
 app.post('/api/auth/login', async (req, res) => {
+    if (!isMongoConnected) {
+        return res.status(503).json({ 
+            message: 'Database not connected. Please check MongoDB connection.' 
+        });
+    }
+
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -154,51 +180,69 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ 
+                message: 'Database not connected. Please check MongoDB connection.' 
+            });
+        }
 
-        const result = await pool
-            .request()
-            .input('Email', sql.NVarChar(150), email)
-            .input('Password', sql.NVarChar(256), password)
-            .query(`
-        SELECT
-          UserId,
-          FullName,
-          UniversityEmail,
-          StudentId,
-          Department,
-          YearOfStudy,
-          CreatedAt,
-          ProfileImageUrl
-        FROM Users
-        WHERE UniversityEmail = @Email
-          AND PasswordHash = HASHBYTES('SHA2_256', @Password);
-      `);
+        const usersCollection = db.collection('users');
 
-        if (result.recordset.length === 0) {
+        // Try new schema first (universityEmail + passwordHash)
+        const passwordHash = hashPassword(password);
+        let user = await usersCollection.findOne({
+            universityEmail: email,
+            passwordHash: passwordHash
+        });
+
+        // If not found, try old schema (email + password with bcrypt)
+        if (!user) {
+            const bcrypt = require('bcrypt');
+            user = await usersCollection.findOne({
+                $or: [
+                    { email: email },
+                    { universityEmail: email }
+                ]
+            });
+
+            if (user && user.password) {
+                // Check bcrypt password
+                const isValid = await bcrypt.compare(password, user.password);
+                if (!isValid) {
+                    user = null;
+                }
+            } else if (user && !user.passwordHash) {
+                user = null;
+            }
+        }
+
+        if (!user) {
             return res
                 .status(401)
                 .json({ message: 'Invalid email or password' });
         }
 
-        const user = result.recordset[0];
-
+        // Return user data (handle both old and new schema)
         return res.status(200).json({
             message: 'Login successful',
             user: {
-                id: user.UserId,
-                name: user.FullName,
-                email: user.UniversityEmail,
-                studentId: user.StudentId,
-                department: user.Department,
-                yearOfStudy: user.YearOfStudy,
-                createdAt: user.CreatedAt,
-                profileImageUrl: user.ProfileImageUrl || null,
+                id: user._id.toString(),
+                name: user.fullName || user.name || '',
+                email: user.universityEmail || user.email || '',
+                studentId: user.studentId || '',
+                department: user.department || '',
+                yearOfStudy: user.yearOfStudy || 1,
+                createdAt: user.createdAt || new Date(),
+                profileImageUrl: user.profileImageUrl || null,
             },
         });
     } catch (err) {
         console.error('Login error:', err);
-        return res.status(500).json({ message: 'Server error' });
+        return res.status(500).json({ 
+            message: 'Server error: ' + (err.message || 'Unknown error'),
+            error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
     }
 });
 
@@ -211,18 +255,14 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
+        const db = req.app.locals.db;
+        const usersCollection = db.collection('users');
 
-        const result = await pool
-            .request()
-            .input('Email', sql.NVarChar(150), email)
-            .query(`
-        SELECT UserId
-        FROM Users
-        WHERE UniversityEmail = @Email;
-      `);
+        const user = await usersCollection.findOne({
+            universityEmail: email
+        });
 
-        if (result.recordset.length === 0) {
+        if (!user) {
             return res.status(404).json({ message: 'No account with this email' });
         }
 
@@ -256,19 +296,16 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
+        const db = req.app.locals.db;
+        const usersCollection = db.collection('users');
 
-        const result = await pool
-            .request()
-            .input('Email', sql.NVarChar(150), email)
-            .input('Password', sql.NVarChar(256), newPassword)
-            .query(`
-        UPDATE Users
-        SET PasswordHash = HASHBYTES('SHA2_256', @Password)
-        WHERE UniversityEmail = @Email;
-      `);
+        const passwordHash = hashPassword(newPassword);
+        const result = await usersCollection.updateOne(
+            { universityEmail: email },
+            { $set: { passwordHash: passwordHash } }
+        );
 
-        if (result.rowsAffected[0] === 0) {
+        if (result.matchedCount === 0) {
             return res.status(404).json({ message: 'No account with this email' });
         }
 
@@ -328,22 +365,58 @@ app.post('/api/uploads/post-media', upload.single('media'), (req, res) => {
 app.get('/api/marketplace/items', async (req, res) => {
     const category = req.query.category;
     try {
-        const pool = req.app.locals.db;
-        let query = `
-      SELECT ItemId, SellerId, Title, Description, Price, ImageUrl,
-             Category, Condition, IsNegotiable, IsActive, PostedDate
-      FROM MarketplaceItems
-      WHERE IsActive = 1
-    `;
-        const request = pool.request();
-        if (category && category !== 'All') {
-            query += ' AND Category = @Category';
-            request.input('Category', sql.NVarChar(50), category);
-        }
-        query += ' ORDER BY PostedDate DESC';
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        const result = await request.query(query);
-        return res.status(200).json({ items: result.recordset });
+        const db = req.app.locals.db;
+        
+        // Try marketplaceItems first, fallback to listings
+        let itemsCollection = db.collection('marketplaceItems');
+        let testItems = await itemsCollection.find({}).limit(1).toArray();
+        
+        // If marketplaceItems is empty, try listings collection
+        if (testItems.length === 0) {
+            const listingsCollection = db.collection('listings');
+            const testListings = await listingsCollection.find({}).limit(1).toArray();
+            if (testListings.length > 0) {
+                itemsCollection = listingsCollection;
+            }
+        }
+
+        // Build query - don't filter by isActive if field doesn't exist
+        let query = {};
+        
+        // Only add isActive filter if we know items have this field
+        // Otherwise, get all items
+        if (testItems.length > 0 || (await itemsCollection.findOne({ isActive: { $exists: true } }))) {
+            query.isActive = { $ne: false };
+        }
+        
+        if (category && category !== 'All') {
+            query.category = category;
+        }
+
+        const items = await itemsCollection
+            .find(query)
+            .sort({ postedDate: -1 })
+            .toArray();
+
+        // Convert _id to string and map field names
+        const formattedItems = items.map(item => ({
+            ItemId: item._id.toString(),
+            SellerId: item.sellerId,
+            Title: item.title,
+            Description: item.description,
+            Price: item.price,
+            ImageUrl: item.imageUrl || null,
+            Category: item.category,
+            Condition: item.condition,
+            IsNegotiable: item.isNegotiable,
+            IsActive: item.isActive,
+            PostedDate: item.postedDate
+        }));
+
+        return res.status(200).json({ items: formattedItems });
     } catch (err) {
         console.error('Get marketplace items error:', err);
         return res.status(500).json({ message: 'Server error' });
@@ -374,27 +447,26 @@ app.post('/api/marketplace/items', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
-        await pool
-            .request()
-            .input('SellerId', sql.Int, sellerId)
-            .input('Title', sql.NVarChar(150), title)
-            .input('Description', sql.NVarChar(1000), description)
-            .input('Price', sql.Decimal(18, 2), price)
-            .input('ImageUrl', sql.NVarChar(300), imageUrl || null)
-            .input('Category', sql.NVarChar(50), category)
-            .input('Condition', sql.NVarChar(50), condition)
-            .input('IsNegotiable', sql.Bit, isNegotiable ?? true)
-            .query(`
-        INSERT INTO MarketplaceItems (
-          SellerId, Title, Description, Price, ImageUrl,
-          Category, Condition, IsNegotiable, IsActive
-        )
-        VALUES (
-          @SellerId, @Title, @Description, @Price, @ImageUrl,
-          @Category, @Condition, @IsNegotiable, 1
-        );
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
+
+        const db = req.app.locals.db;
+        const itemsCollection = db.collection('marketplaceItems');
+
+        const newItem = {
+            sellerId: sellerId,
+            title: title,
+            description: description,
+            price: price,
+            imageUrl: imageUrl || null,
+            category: category,
+            condition: condition,
+            isNegotiable: isNegotiable ?? true,
+            isActive: true,
+            postedDate: new Date()
+        };
+
+        await itemsCollection.insertOne(newItem);
 
         return res.status(201).json({ message: 'Item created successfully' });
     } catch (err) {
@@ -413,22 +485,184 @@ app.post('/api/messages', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
-        await pool
-            .request()
-            .input('ItemId', sql.Int, itemId)
-            .input('BuyerId', sql.Int, buyerId)
-            .input('SellerId', sql.Int, sellerId)
-            .input('MessageText', sql.NVarChar(1000), messageText)
-            .query(`
-        INSERT INTO Messages (ItemId, BuyerId, SellerId, MessageText)
-        VALUES (@ItemId, @BuyerId, @SellerId, @MessageText);
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
+
+        const db = req.app.locals.db;
+        const messagesCollection = db.collection('messages');
+
+        const newMessage = {
+            itemId: itemId,
+            buyerId: buyerId,
+            sellerId: sellerId,
+            messageText: messageText,
+            createdAt: new Date()
+        };
+
+        await messagesCollection.insertOne(newMessage);
 
         return res.status(201).json({ message: 'Message created successfully' });
     } catch (err) {
         console.error('Create message error:', err);
         return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+/* ========== LIKES ROUTES ========== */
+
+// Like/Unlike a post
+app.post('/api/posts/:postId/like', async (req, res) => {
+    const postId = req.params.postId;
+    const { userId } = req.body;
+
+    if (!postId || !userId) {
+        return res.status(400).json({ message: 'postId and userId are required' });
+    }
+
+    try {
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
+
+        const db = req.app.locals.db;
+        const likesCollection = db.collection('likes');
+        const postsCollection = db.collection('posts');
+        const notificationsCollection = db.collection('notifications');
+        const usersCollection = db.collection('users');
+
+        // Check if post exists - handle both ObjectId and string
+        let post;
+        try {
+            post = await postsCollection.findOne({ _id: new ObjectId(postId) });
+        } catch (e) {
+            post = await postsCollection.findOne({ _id: postId });
+        }
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        // Check if user already liked this post
+        const existingLike = await likesCollection.findOne({
+            postId: postId,
+            userId: userId
+        });
+
+        if (existingLike) {
+            // Unlike: Remove the like
+            await likesCollection.deleteOne({ _id: existingLike._id });
+            
+            // Remove notification if exists
+            await notificationsCollection.deleteMany({
+                type: 'like',
+                postId: postId,
+                senderId: userId
+            });
+
+            // Get updated like count
+            const likeCount = await likesCollection.countDocuments({ postId: postId });
+
+            return res.status(200).json({
+                message: 'Post unliked',
+                isLiked: false,
+                likeCount: likeCount
+            });
+        } else {
+            // Like: Add the like
+            await likesCollection.insertOne({
+                postId: postId,
+                userId: userId,
+                createdAt: new Date()
+            });
+
+            // Create notification for post owner (if not liking own post)
+            if (post.userId !== userId) {
+                let liker;
+                try {
+                    liker = await usersCollection.findOne({ _id: new ObjectId(userId) });
+                } catch (e) {
+                    liker = await usersCollection.findOne({ _id: userId });
+                }
+                if (!liker) {
+                    // Try finding by any field that might match
+                    liker = await usersCollection.findOne({ 
+                        $or: [
+                            { _id: userId },
+                            { userId: userId }
+                        ]
+                    });
+                }
+                await notificationsCollection.insertOne({
+                    userId: post.userId,
+                    type: 'like',
+                    title: liker ? (liker.fullName || liker.name || 'Someone') : 'Someone',
+                    body: 'liked your post',
+                    senderId: userId,
+                    senderName: liker ? (liker.fullName || liker.name) : null,
+                    senderImage: liker ? liker.profileImageUrl : null,
+                    postId: postId,
+                    timestamp: new Date(),
+                    isRead: false
+                });
+            }
+
+            // Get updated like count
+            const likeCount = await likesCollection.countDocuments({ postId: postId });
+
+            return res.status(200).json({
+                message: 'Post liked',
+                isLiked: true,
+                likeCount: likeCount
+            });
+        }
+    } catch (err) {
+        console.error('Like post error:', err);
+        return res.status(500).json({ message: 'Server error: ' + err.message });
+    }
+});
+
+// Get likes for a post
+app.get('/api/posts/:postId/likes', async (req, res) => {
+    const postId = req.params.postId;
+
+    try {
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
+
+        const db = req.app.locals.db;
+        const likesCollection = db.collection('likes');
+        const usersCollection = db.collection('users');
+
+        const likes = await likesCollection.find({ postId: postId }).toArray();
+        const userIds = likes.map(l => l.userId);
+
+        const users = await usersCollection.find({
+            _id: { $in: userIds.map(id => {
+                try {
+                    return new ObjectId(id);
+                } catch {
+                    return id;
+                }
+            })}
+        }).toArray();
+
+        const userMap = {};
+        users.forEach(u => {
+            userMap[u._id.toString()] = u;
+        });
+
+        const formattedLikes = likes.map(like => {
+            const user = userMap[like.userId] || {};
+            return {
+                userId: like.userId,
+                userName: user.fullName || user.name || `User ${like.userId}`,
+                userAvatar: user.profileImageUrl || null,
+                createdAt: like.createdAt
+            };
+        });
+
+        return res.status(200).json({ likes: formattedLikes, count: formattedLikes.length });
+    } catch (err) {
+        console.error('Get likes error:', err);
+        return res.status(500).json({ message: 'Server error: ' + err.message });
     }
 });
 
@@ -442,45 +676,124 @@ app.post('/api/comments', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
-        await pool
-            .request()
-            .input('PostId', sql.Int, postId)
-            .input('AuthorId', sql.Int, authorId)
-            .input('PostOwnerId', sql.Int, postOwnerId)
-            .input('CommentText', sql.NVarChar(1000), commentText)
-            .query(`
-        INSERT INTO Comments (PostId, AuthorId, PostOwnerId, CommentText)
-        VALUES (@PostId, @AuthorId, @PostOwnerId, @CommentText);
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        return res.status(201).json({ message: 'Comment saved' });
+        const db = req.app.locals.db;
+        const commentsCollection = db.collection('comments');
+        const notificationsCollection = db.collection('notifications');
+        const usersCollection = db.collection('users');
+
+        const newComment = {
+            postId: postId,
+            authorId: authorId,
+            postOwnerId: postOwnerId,
+            commentText: commentText,
+            createdAt: new Date()
+        };
+
+        const result = await commentsCollection.insertOne(newComment);
+
+        // Create notification for post owner (if not commenting on own post)
+        if (postOwnerId !== authorId) {
+            let commenter;
+            try {
+                commenter = await usersCollection.findOne({ _id: new ObjectId(authorId) });
+            } catch (e) {
+                commenter = await usersCollection.findOne({ _id: authorId });
+            }
+            if (!commenter) {
+                commenter = await usersCollection.findOne({ 
+                    $or: [
+                        { _id: authorId },
+                        { userId: authorId }
+                    ]
+                });
+            }
+            await notificationsCollection.insertOne({
+                userId: postOwnerId,
+                type: 'comment',
+                title: commenter ? (commenter.fullName || commenter.name || 'Someone') : 'Someone',
+                body: commentText.length > 50 ? commentText.substring(0, 50) + '...' : commentText,
+                senderId: authorId,
+                senderName: commenter ? (commenter.fullName || commenter.name) : null,
+                senderImage: commenter ? commenter.profileImageUrl : null,
+                postId: postId,
+                timestamp: new Date(),
+                isRead: false
+            });
+        }
+
+        return res.status(201).json({
+            message: 'Comment saved',
+            comment: {
+                CommentId: result.insertedId.toString(),
+                PostId: postId,
+                AuthorId: authorId,
+                PostOwnerId: postOwnerId,
+                CommentText: commentText,
+                CreatedAt: newComment.createdAt
+            }
+        });
     } catch (err) {
         console.error('Create comment error:', err);
-        return res.status(500).json({ message: 'Server error' });
+        return res.status(500).json({ message: 'Server error: ' + err.message });
     }
 });
 
 app.get('/api/comments/:postId', async (req, res) => {
-    const postId = parseInt(req.params.postId, 10);
+    const postId = req.params.postId;
     if (!postId) return res.status(400).json({ message: 'Invalid post id' });
 
     try {
-        const pool = req.app.locals.db;
-        const result = await pool
-            .request()
-            .input('PostId', sql.Int, postId)
-            .query(`
-        SELECT CommentId, PostId, AuthorId, PostOwnerId, CommentText, CreatedAt
-        FROM Comments
-        WHERE PostId = @PostId
-        ORDER BY CreatedAt ASC;
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        return res.status(200).json({ comments: result.recordset });
+        const db = req.app.locals.db;
+        const commentsCollection = db.collection('comments');
+        const usersCollection = db.collection('users');
+
+        const comments = await commentsCollection
+            .find({ postId: postId })
+            .sort({ createdAt: 1 })
+            .toArray();
+
+        // Get user info for all comment authors
+        const authorIds = [...new Set(comments.map(c => c.authorId))];
+        const users = await usersCollection.find({
+            _id: { $in: authorIds.map(id => {
+                try {
+                    return new ObjectId(id);
+                } catch {
+                    return id;
+                }
+            })}
+        }).toArray();
+
+        const userMap = {};
+        users.forEach(u => {
+            userMap[u._id.toString()] = u;
+        });
+
+        // Format comments with user info
+        const formattedComments = comments.map(comment => {
+            const user = userMap[comment.authorId] || userMap[comment.authorId?.toString()] || {};
+            return {
+                CommentId: comment._id.toString(),
+                PostId: comment.postId,
+                AuthorId: comment.authorId,
+                AuthorName: user.fullName || user.name || `User ${comment.authorId}`,
+                AuthorAvatar: user.profileImageUrl || null,
+                PostOwnerId: comment.postOwnerId,
+                CommentText: comment.commentText,
+                CreatedAt: comment.createdAt
+            };
+        });
+
+        return res.status(200).json({ comments: formattedComments });
     } catch (err) {
         console.error('Get comments error:', err);
-        return res.status(500).json({ message: 'Server error' });
+        return res.status(500).json({ message: 'Server error: ' + err.message });
     }
 });
 
@@ -497,18 +810,22 @@ app.post('/api/posts', async (req, res) => {
         content && typeof content === 'string' ? content : '';
 
     try {
-        const pool = req.app.locals.db;
-        await pool
-            .request()
-            .input('UserId', sql.Int, userId)
-            .input('Content', sql.NVarChar(2000), safeContent)
-            .input('MediaUrl', sql.NVarChar(300), mediaUrl || null)
-            .input('MediaType', sql.NVarChar(20), mediaType || null)
-            .input('Privacy', sql.NVarChar(20), privacy)
-            .query(`
-        INSERT INTO Posts (UserId, Content, MediaUrl, MediaType, Privacy)
-        VALUES (@UserId, @Content, @MediaUrl, @MediaType, @Privacy);
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
+
+        const db = req.app.locals.db;
+        const postsCollection = db.collection('posts');
+
+        const newPost = {
+            userId: userId,
+            content: safeContent,
+            mediaUrl: mediaUrl || null,
+            mediaType: mediaType || null,
+            privacy: privacy,
+            createdAt: new Date()
+        };
+
+        await postsCollection.insertOne(newPost);
 
         return res.status(201).json({ message: 'Post created successfully' });
     } catch (err) {
@@ -520,50 +837,143 @@ app.post('/api/posts', async (req, res) => {
 /* ========== POSTS: GET (home feed) ========== */
 
 app.get('/api/posts', async (req, res) => {
+    const currentUserId = req.query.userId; // Optional: to check if user liked posts
+    
     try {
-        const pool = req.app.locals.db;
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        const result = await pool.request().query(`
-      SELECT
-        PostId,
-        UserId,
-        Content,
-        MediaUrl,
-        MediaType,
-        Privacy,
-        CreatedAt
-      FROM Posts
-      ORDER BY CreatedAt DESC;
-    `);
+        const db = req.app.locals.db;
+        const postsCollection = db.collection('posts');
+        const usersCollection = db.collection('users');
+        const likesCollection = db.collection('likes');
+        const commentsCollection = db.collection('comments');
 
-        return res.status(200).json({ posts: result.recordset });
+        const posts = await postsCollection
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        // Get all user IDs from posts
+        const userIds = [...new Set(posts.map(p => p.userId))];
+        const users = await usersCollection.find({
+            _id: { $in: userIds.map(id => {
+                try {
+                    return new ObjectId(id);
+                } catch {
+                    return id;
+                }
+            })}
+        }).toArray();
+        
+        const userMap = {};
+        users.forEach(u => {
+            userMap[u._id.toString()] = u;
+            // Also map by userId if it's stored as string
+            if (u._id) userMap[u._id.toString()] = u;
+        });
+
+        // Get like counts and check if current user liked each post
+        const postIds = posts.map(p => p._id.toString());
+        const likes = await likesCollection.find({
+            postId: { $in: postIds }
+        }).toArray();
+
+        const likeCounts = {};
+        const userLikedPosts = {};
+        likes.forEach(like => {
+            likeCounts[like.postId] = (likeCounts[like.postId] || 0) + 1;
+            if (currentUserId && like.userId === currentUserId) {
+                userLikedPosts[like.postId] = true;
+            }
+        });
+
+        // Get comment counts
+        const comments = await commentsCollection.find({
+            postId: { $in: postIds }
+        }).toArray();
+
+        const commentCounts = {};
+        comments.forEach(comment => {
+            commentCounts[comment.postId] = (commentCounts[comment.postId] || 0) + 1;
+        });
+
+        // Format posts with user info and counts
+        const formattedPosts = posts.map(post => {
+            const postId = post._id.toString();
+            const user = userMap[post.userId] || userMap[post.userId?.toString()] || {};
+            
+            return {
+                PostId: postId,
+                UserId: post.userId,
+                UserName: user.fullName || user.name || `User ${post.userId}`,
+                UserAvatar: user.profileImageUrl || null,
+                Content: post.content || '',
+                MediaUrl: post.mediaUrl,
+                MediaType: post.mediaType,
+                Privacy: post.privacy,
+                CreatedAt: post.createdAt,
+                LikeCount: likeCounts[postId] || 0,
+                CommentCount: commentCounts[postId] || 0,
+                IsLiked: currentUserId ? (userLikedPosts[postId] || false) : false
+            };
+        });
+
+        return res.status(200).json({ posts: formattedPosts });
     } catch (err) {
         console.error('Get posts error:', err);
-        return res.status(500).json({ message: 'Server error' });
+        return res.status(500).json({ message: 'Server error: ' + err.message });
     }
 });
 
 /* ========== NOTIFICATIONS: LIST ========== */
 
 app.get('/api/notifications/:userId', async (req, res) => {
-    const userId = parseInt(req.params.userId, 10);
+    const userId = req.params.userId;
     if (!userId) return res.status(400).json({ message: 'Invalid user id' });
 
     try {
-        const pool = req.app.locals.db;
-        const result = await pool
-            .request()
-            .input('UserId', sql.Int, userId)
-            .query(`
-        SELECT NotificationId, UserId, Type, Title, Body, SenderId,
-               SenderName, SenderImage, PostId, ItemId,
-               Timestamp, IsRead
-        FROM Notifications
-        WHERE UserId = @UserId
-        ORDER BY Timestamp DESC;
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        return res.status(200).json({ notifications: result.recordset });
+        const db = req.app.locals.db;
+        const notificationsCollection = db.collection('notifications');
+
+        // Try to find notifications by userId (as string or ObjectId)
+        let notifications = await notificationsCollection
+            .find({ userId: userId })
+            .sort({ timestamp: -1 })
+            .toArray();
+        
+        // If no notifications found, try with ObjectId
+        if (notifications.length === 0) {
+            try {
+                notifications = await notificationsCollection
+                    .find({ userId: new ObjectId(userId) })
+                    .sort({ timestamp: -1 })
+                    .toArray();
+            } catch (e) {
+                // userId is not a valid ObjectId, that's okay
+            }
+        }
+
+        // Format notifications
+        const formattedNotifications = notifications.map(notif => ({
+            NotificationId: notif._id.toString(),
+            UserId: notif.userId,
+            Type: notif.type,
+            Title: notif.title,
+            Body: notif.body,
+            SenderId: notif.senderId,
+            SenderName: notif.senderName,
+            SenderImage: notif.senderImage,
+            PostId: notif.postId,
+            ItemId: notif.itemId,
+            Timestamp: notif.timestamp,
+            IsRead: notif.isRead
+        }));
+
+        return res.status(200).json({ notifications: formattedNotifications });
     } catch (err) {
         console.error('Get notifications error:', err);
         return res.status(500).json({ message: 'Server error' });
@@ -580,17 +990,18 @@ app.post('/api/notifications/mark-read', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
-        const result = await pool
-            .request()
-            .input('NotificationId', sql.Int, notificationId)
-            .query(`
-        UPDATE Notifications
-        SET IsRead = 1
-        WHERE NotificationId = @NotificationId;
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        if (result.rowsAffected[0] === 0) {
+        const db = req.app.locals.db;
+        const notificationsCollection = db.collection('notifications');
+
+        const result = await notificationsCollection.updateOne(
+            { _id: new ObjectId(notificationId) },
+            { $set: { isRead: true } }
+        );
+
+        if (result.matchedCount === 0) {
             return res.status(404).json({ message: 'Notification not found' });
         }
 
@@ -604,21 +1015,21 @@ app.post('/api/notifications/mark-read', async (req, res) => {
 /* ========== NOTIFICATIONS: UNREAD COUNT ========== */
 
 app.get('/api/notifications/:userId/unread-count', async (req, res) => {
-    const userId = parseInt(req.params.userId, 10);
+    const userId = req.params.userId;
     if (!userId) return res.status(400).json({ message: 'Invalid user id' });
 
     try {
-        const pool = req.app.locals.db;
-        const result = await pool
-            .request()
-            .input('UserId', sql.Int, userId)
-            .query(`
-        SELECT COUNT(*) AS UnreadCount
-        FROM Notifications
-        WHERE UserId = @UserId AND IsRead = 0;
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        const count = result.recordset[0].UnreadCount;
+        const db = req.app.locals.db;
+        const notificationsCollection = db.collection('notifications');
+
+        const count = await notificationsCollection.countDocuments({
+            userId: userId,
+            isRead: false
+        });
+
         return res.status(200).json({ unreadCount: count });
     } catch (err) {
         console.error('Get unread notifications count error:', err);
@@ -630,8 +1041,8 @@ app.get('/api/notifications/:userId/unread-count', async (req, res) => {
 
 // Get all messages between two users (1-to-1)
 app.get('/api/chat/messages', async (req, res) => {
-    const user1 = parseInt(req.query.user1, 10);
-    const user2 = parseInt(req.query.user2, 10);
+    const user1 = req.query.user1;
+    const user2 = req.query.user2;
 
     if (!user1 || !user2) {
         return res
@@ -640,29 +1051,33 @@ app.get('/api/chat/messages', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        const result = await pool
-            .request()
-            .input('User1', sql.Int, user1)
-            .input('User2', sql.Int, user2)
-            .query(`
-        SELECT
-          MessageId,
-          SenderId,
-          ReceiverId,
-          Content,
-          Timestamp,
-          IsRead
-        FROM ChatMessages
-        WHERE
-          (SenderId = @User1 AND ReceiverId = @User2)
-          OR
-          (SenderId = @User2 AND ReceiverId = @User1)
-        ORDER BY Timestamp ASC;
-      `);
+        const db = req.app.locals.db;
+        const chatMessagesCollection = db.collection('chatMessages');
 
-        return res.status(200).json({ messages: result.recordset });
+        const messages = await chatMessagesCollection
+            .find({
+                $or: [
+                    { senderId: user1, receiverId: user2 },
+                    { senderId: user2, receiverId: user1 }
+                ]
+            })
+            .sort({ timestamp: 1 })
+            .toArray();
+
+        // Format messages
+        const formattedMessages = messages.map(msg => ({
+            MessageId: msg._id.toString(),
+            SenderId: msg.senderId,
+            ReceiverId: msg.receiverId,
+            Content: msg.content,
+            Timestamp: msg.timestamp,
+            IsRead: msg.isRead
+        }));
+
+        return res.status(200).json({ messages: formattedMessages });
     } catch (err) {
         console.error('Get chat messages error:', err);
         return res.status(500).json({ message: 'Server error' });
@@ -680,62 +1095,56 @@ app.post('/api/chat/messages', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
+
+        const db = req.app.locals.db;
+        const chatMessagesCollection = db.collection('chatMessages');
+        const usersCollection = db.collection('users');
+        const notificationsCollection = db.collection('notifications');
 
         // 1) Insert chat message
-        const msgResult = await pool
-            .request()
-            .input('SenderId', sql.Int, senderId)
-            .input('ReceiverId', sql.Int, receiverId)
-            .input('Content', sql.NVarChar(2000), content)
-            .query(`
-        INSERT INTO ChatMessages (SenderId, ReceiverId, Content)
-        OUTPUT INSERTED.MessageId, INSERTED.SenderId, INSERTED.ReceiverId,
-               INSERTED.Content, INSERTED.Timestamp, INSERTED.IsRead
-        VALUES (@SenderId, @ReceiverId, @Content);
-      `);
+        const newMessage = {
+            senderId: senderId,
+            receiverId: receiverId,
+            content: content,
+            timestamp: new Date(),
+            isRead: false
+        };
 
-        const chatRow = msgResult.recordset[0];
+        const msgResult = await chatMessagesCollection.insertOne(newMessage);
+        const chatMessage = {
+            MessageId: msgResult.insertedId.toString(),
+            SenderId: senderId,
+            ReceiverId: receiverId,
+            Content: content,
+            Timestamp: newMessage.timestamp,
+            IsRead: false
+        };
 
         // 2) Get sender's display info
-        const userResult = await pool
-            .request()
-            .input('SenderId', sql.Int, senderId)
-            .query(`
-        SELECT FullName, ProfileImageUrl
-        FROM Users
-        WHERE UserId = @SenderId;
-      `);
-
-        const sender = userResult.recordset[0];
-
-        const senderName = sender ? sender.FullName : 'Unknown';
-        const senderImage = sender ? sender.ProfileImageUrl : null;
+        const sender = await usersCollection.findOne({ _id: new ObjectId(senderId) });
+        const senderName = sender ? sender.fullName : 'Unknown';
+        const senderImage = sender ? sender.profileImageUrl : null;
 
         // 3) Insert notification for receiver
-        await pool
-            .request()
-            .input('UserId', sql.Int, receiverId)
-            .input('Type', sql.NVarChar(20), 'message')
-            .input('Title', sql.NVarChar(150), senderName)
-            .input('Body', sql.NVarChar(500), content.substring(0, 120))
-            .input('SenderId', sql.Int, senderId)
-            .input('SenderName', sql.NVarChar(100), senderName)
-            .input('SenderImage', sql.NVarChar(300), senderImage)
-            .query(`
-        INSERT INTO Notifications (
-          UserId, Type, Title, Body,
-          SenderId, SenderName, SenderImage
-        )
-        VALUES (
-          @UserId, @Type, @Title, @Body,
-          @SenderId, @SenderName, @SenderImage
-        );
-      `);
+        const notification = {
+            userId: receiverId,
+            type: 'message',
+            title: senderName,
+            body: content.substring(0, 120),
+            senderId: senderId,
+            senderName: senderName,
+            senderImage: senderImage,
+            timestamp: new Date(),
+            isRead: false
+        };
+
+        await notificationsCollection.insertOne(notification);
 
         return res.status(201).json({
             message: 'Message sent',
-            chatMessage: chatRow,
+            chatMessage: chatMessage,
         });
     } catch (err) {
         console.error('Create chat message error:', err);
@@ -751,71 +1160,215 @@ app.get('/api/users/search', async (req, res) => {
     }
 
     try {
-        const pool = req.app.locals.db;
-        const result = await pool
-            .request()
-            .input('Q', sql.NVarChar(150), `%${q}%`)
-            .query(`
-        SELECT TOP 20
-          UserId,
-          FullName,
-          UniversityEmail,
-          ProfileImageUrl
-        FROM Users
-        WHERE FullName LIKE @Q
-           OR UniversityEmail LIKE @Q
-        ORDER BY FullName ASC;
-      `);
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        return res.status(200).json({ users: result.recordset });
+        const db = req.app.locals.db;
+        const usersCollection = db.collection('users');
+
+        const users = await usersCollection
+            .find({
+                $or: [
+                    { fullName: { $regex: q, $options: 'i' } },
+                    { universityEmail: { $regex: q, $options: 'i' } }
+                ]
+            })
+            .limit(20)
+            .sort({ fullName: 1 })
+            .toArray();
+
+        // Format users
+        const formattedUsers = users.map(user => ({
+            UserId: user._id.toString(),
+            FullName: user.fullName,
+            UniversityEmail: user.universityEmail,
+            ProfileImageUrl: user.profileImageUrl || null
+        }));
+
+        return res.status(200).json({ users: formattedUsers });
     } catch (err) {
         console.error('User search error:', err);
         return res.status(500).json({ message: 'Server error' });
     }
 });
 
-
-
 /* ========== CHAT CONVERSATIONS (for chat list) ========== */
 
 app.get('/api/chat/conversations', async (req, res) => {
-    const userId = parseInt(req.query.userId, 10);
+    const userId = req.query.userId;
 
     if (!userId) {
         return res.status(400).json({ message: 'userId is required' });
     }
 
     try {
-        const pool = req.app.locals.db;
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
 
-        const result = await pool
-            .request()
-            .input('UserId', sql.Int, userId)
-            .query(`
-        SELECT TOP 50
-          u.UserId   AS OtherUserId,
-          u.FullName AS OtherUserName,
-          u.ProfileImageUrl,
-          cm.Content AS LastMessage,
-          cm.Timestamp AS LastMessageTime,
-          0 AS UnreadCount
-        FROM ChatMessages cm
-        JOIN Users u
-          ON (cm.SenderId = u.UserId AND cm.ReceiverId = @UserId)
-          OR (cm.ReceiverId = u.UserId AND cm.SenderId = @UserId)
-        WHERE u.UserId <> @UserId
-        ORDER BY cm.Timestamp DESC;
-      `);
+        const db = req.app.locals.db;
+        const chatMessagesCollection = db.collection('chatMessages');
+        const usersCollection = db.collection('users');
 
-        return res.status(200).json({ conversations: result.recordset });
+        // Get all messages involving this user
+        const messages = await chatMessagesCollection
+            .find({
+                $or: [
+                    { senderId: userId },
+                    { receiverId: userId }
+                ]
+            })
+            .sort({ timestamp: -1 })
+            .limit(50)
+            .toArray();
+
+        // Get unique other users and their last message
+        const conversationsMap = new Map();
+        for (const msg of messages) {
+            const otherUserId = msg.senderId === userId ? msg.receiverId : msg.senderId;
+            if (!conversationsMap.has(otherUserId)) {
+                conversationsMap.set(otherUserId, msg);
+            }
+        }
+
+        // Get user details for each conversation
+        const conversations = [];
+        for (const [otherUserId, lastMessage] of conversationsMap) {
+            try {
+                let otherUser;
+                try {
+                    otherUser = await usersCollection.findOne({ _id: new ObjectId(otherUserId) });
+                } catch (e) {
+                    otherUser = await usersCollection.findOne({ _id: otherUserId });
+                }
+                if (!otherUser) {
+                    // Try finding by any matching field
+                    otherUser = await usersCollection.findOne({
+                        $or: [
+                            { _id: otherUserId },
+                            { userId: otherUserId }
+                        ]
+                    });
+                }
+                if (otherUser) {
+                    conversations.push({
+                        OtherUserId: otherUser._id ? otherUser._id.toString() : otherUserId,
+                        OtherUserName: otherUser.fullName || otherUser.name || `User ${otherUserId}`,
+                        ProfileImageUrl: otherUser.profileImageUrl || null,
+                        LastMessage: lastMessage.content || '',
+                        LastMessageTime: lastMessage.timestamp || lastMessage.createdAt || new Date(),
+                        UnreadCount: 0
+                    });
+                }
+            } catch (err) {
+                console.error('Error getting user for conversation:', err);
+                // Skip invalid user IDs but still add conversation
+                conversations.push({
+                    OtherUserId: otherUserId,
+                    OtherUserName: `User ${otherUserId}`,
+                    ProfileImageUrl: null,
+                    LastMessage: lastMessage.content || '',
+                    LastMessageTime: lastMessage.timestamp || new Date(),
+                    UnreadCount: 0
+                });
+            }
+        }
+
+        return res.status(200).json({ conversations: conversations });
     } catch (err) {
         console.error('Get conversations error:', err);
         return res.status(500).json({ message: 'Server error' });
     }
 });
 
+/* ========== SETTINGS ROUTES ========== */
+
+// Update notification settings
+app.post('/api/settings/notifications', async (req, res) => {
+    const { userId, enabled } = req.body;
+
+    if (!userId || typeof enabled !== 'boolean') {
+        return res.status(400).json({ message: 'userId and enabled are required' });
+    }
+
+    try {
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
+
+        const db = req.app.locals.db;
+        const usersCollection = db.collection('users');
+
+        // Update user's notification settings
+        let result;
+        try {
+            result = await usersCollection.updateOne(
+                { _id: new ObjectId(userId) },
+                { $set: { notificationEnabled: enabled } }
+            );
+        } catch (e) {
+            result = await usersCollection.updateOne(
+                { _id: userId },
+                { $set: { notificationEnabled: enabled } }
+            );
+        }
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        return res.status(200).json({ 
+            message: 'Notification settings updated',
+            enabled: enabled
+        });
+    } catch (err) {
+        console.error('Update notification settings error:', err);
+        return res.status(500).json({ message: 'Server error: ' + err.message });
+    }
+});
+
+// Get user settings
+app.get('/api/settings/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    try {
+        const dbCheck = checkMongoConnection(req, res);
+        if (dbCheck) return dbCheck;
+
+        const db = req.app.locals.db;
+        const usersCollection = db.collection('users');
+
+        let user;
+        try {
+            user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+        } catch (e) {
+            user = await usersCollection.findOne({ _id: userId });
+        }
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        return res.status(200).json({
+            notificationEnabled: user.notificationEnabled !== false, // default to true
+            privacy: user.privacy || 'public'
+        });
+    } catch (err) {
+        console.error('Get settings error:', err);
+        return res.status(500).json({ message: 'Server error: ' + err.message });
+    }
+});
+
 /* ========== START SERVER ========== */
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`UniLink backend running on port ${PORT}`);
+    console.log(`MongoDB URI: ${MONGODB_URI}`);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    if (client) {
+        await client.close();
+        console.log('MongoDB connection closed');
+    }
+    process.exit(0);
 });

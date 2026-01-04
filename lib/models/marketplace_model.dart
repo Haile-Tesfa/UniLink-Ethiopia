@@ -28,13 +28,27 @@ class MarketplaceItem {
   });
 
   factory MarketplaceItem.fromJson(Map<String, dynamic> json) {
+    // Handle ItemId as either int or string (backend returns string from ObjectId)
+    int itemId;
+    if (json['ItemId'] is int) {
+      itemId = json['ItemId'] as int;
+    } else if (json['ItemId'] is String) {
+      // Try to parse as int, if fails use hash code
+      itemId = int.tryParse(json['ItemId'] as String) ?? (json['ItemId'] as String).hashCode;
+    } else {
+      itemId = 0;
+    }
+    
+    // Handle ImageUrl - keep as is, URL construction should happen in the UI layer
+    String imageUrl = json['ImageUrl'] as String? ?? '';
+    
     return MarketplaceItem(
-      id: json['ItemId'] as int,
+      id: itemId,
       sellerId: json['SellerId'] as int,
       title: json['Title'] as String,
       description: json['Description'] as String,
       price: (json['Price'] as num).toDouble(),
-      imageUrl: json['ImageUrl'] as String? ?? '',
+      imageUrl: imageUrl,
       sellerName: 'Seller #${json['SellerId']}',
       category: json['Category'] as String,
       condition: json['Condition'] as String? ?? 'Good',

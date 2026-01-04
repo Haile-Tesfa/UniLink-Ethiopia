@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../../models/notification_model.dart';
 import '../../utils/colors.dart';
+import '../../utils/constants.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final int currentUserId;
@@ -17,7 +18,7 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  static const String _baseUrl = 'http://localhost:5000';
+  // Using centralized API URL from constants
 
   bool _isLoading = false;
   List<NotificationModel> _notifications = [];
@@ -33,7 +34,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     try {
       final uri = Uri.parse(
-        '$_baseUrl/api/notifications?userId=${widget.currentUserId}',
+        '${AppConstants.apiBaseUrl}/api/notifications/${widget.currentUserId}',
       );
       final res = await http.get(uri);
 
@@ -71,7 +72,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
 
     try {
-      final uri = Uri.parse('$_baseUrl/api/notifications/mark-all-read');
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/notifications/mark-read');
       await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -113,7 +114,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
 
     try {
-      final uri = Uri.parse('$_baseUrl/api/notifications/clear-all');
+      final uri = Uri.parse('${AppConstants.apiBaseUrl}/api/notifications/clear-all');
       await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
